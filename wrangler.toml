@@ -13,6 +13,10 @@ compatibility_flags = ["nodejs_compat"]
 #   USERS_JSON             only if ENABLE_LOGIN = "true" and LOGIN_DATABASE = "Local"
 #   LOGIN_GOOGLE_CLIENT_ID / LOGIN_GOOGLE_CLIENT_SECRET   only for social login
 #
+# NOTE: Workers Free allows at most 32 variables per Worker (vars + secrets).
+# Only the essentials are active below; every other option has a default in
+# src/worker.js. Uncomment just the ones you want to change.
+#
 # Optional bindings for login with LOGIN_DATABASE = "KV" or "D1": add a
 # [[kv_namespaces]] binding named ENV, or a [[d1_databases]] binding named DB.
 
@@ -25,47 +29,47 @@ ROOTS = '[{"id":"root","type":"root","name":"My Drive","protect_file_link":false
 
 USE_SERVICE_ACCOUNT = "false"
 
-# Access control / behaviour
-FILES_LIST_PAGE_SIZE = "100"
-SEARCH_RESULT_LIST_PAGE_SIZE = "100"
-ENABLE_CORS_FILE_DOWN = "false"
-ENABLE_PASSWORD_FILE_VERIFY = "false"
-DIRECT_LINK_PROTECTION = "false"
-DISABLE_ANONYMOUS_DOWNLOAD = "false"
-FILE_LINK_EXPIRY = "7"
-SEARCH_ALL_DRIVES = "true"
-CORS_DOMAIN = "*"
-BLOCKED_REGION = ""   # e.g. "IN,US"
-BLOCKED_ASN = ""      # e.g. "16509,12345"
-DOMAINS_FOR_DL = ""   # e.g. "https://a.workers.dev,https://b.workers.dev"
-
+# ── Optional overrides (defaults shown; uncomment to change) ─────────────────
+# FILES_LIST_PAGE_SIZE = "100"
+# SEARCH_RESULT_LIST_PAGE_SIZE = "100"
+# ENABLE_CORS_FILE_DOWN = "false"
+# ENABLE_PASSWORD_FILE_VERIFY = "false"
+# DIRECT_LINK_PROTECTION = "false"
+# DISABLE_ANONYMOUS_DOWNLOAD = "false"
+# FILE_LINK_EXPIRY = "7"
+# SEARCH_ALL_DRIVES = "true"
+# CORS_DOMAIN = "*"
+# BLOCKED_REGION = ""       # e.g. "IN,US"
+# BLOCKED_ASN = ""          # e.g. "16509,12345"
+# DOMAINS_FOR_DL = ""       # e.g. "https://a.workers.dev,https://b.workers.dev"
+#
 # Login system
-ENABLE_LOGIN = "false"
-ENABLE_SIGNUP = "false"
-ENABLE_SOCIAL_LOGIN = "false"
-LOGIN_DATABASE = "Local"   # Local | KV | D1
-LOGIN_DAYS = "7"
-ENABLE_IP_LOCK = "false"
-SINGLE_SESSION = "false"
-IP_CHANGED_ACTION = "false"
-REDIRECT_DOMAIN = ""
-
+# ENABLE_LOGIN = "false"
+# ENABLE_SIGNUP = "false"
+# ENABLE_SOCIAL_LOGIN = "false"
+# LOGIN_DATABASE = "Local"  # Local | KV | D1
+# LOGIN_DAYS = "7"
+# ENABLE_IP_LOCK = "false"
+# SINGLE_SESSION = "false"
+# IP_CHANGED_ACTION = "false"
+# REDIRECT_DOMAIN = ""
+#
 # UI
-UI_THEME = "darkly"
-UI_LOGO_IMAGE = "true"
-UI_LOGO_WIDTH = "100px"
-UI_FIXED_HEADER = "true"
-UI_HEADER_PADDING = "80"
-UI_HIDE_FOOTER = "true"
-UI_CONTACT_LINK = "#"
-UI_COMPANY_NAME = "Google Drive Index"
-UI_COMPANY_LINK = "#"
-UI_CREDIT = "true"
-UI_DISPLAY_SIZE = "true"
-UI_DISPLAY_TIME = "false"
-UI_DISPLAY_DOWNLOAD = "true"
-UI_DISABLE_PLAYER = "false"
-UI_SECOND_DOMAIN_FOR_DL = "false"
-UI_UNAUTHORIZED_OWNER_LINK = "#"
-UI_UNAUTHORIZED_OWNER_EMAIL = ""
-UI_SHOW_QUOTA = "false"
+# UI_THEME = "darkly"
+# UI_LOGO_IMAGE = "true"
+# UI_LOGO_WIDTH = "100px"
+# UI_FIXED_HEADER = "true"
+# UI_HEADER_PADDING = "80"
+# UI_HIDE_FOOTER = "true"
+# UI_CONTACT_LINK = "#"
+# UI_COMPANY_NAME = "Google Drive Index"
+# UI_COMPANY_LINK = "#"
+# UI_CREDIT = "true"
+# UI_DISPLAY_SIZE = "true"
+# UI_DISPLAY_TIME = "false"
+# UI_DISPLAY_DOWNLOAD = "true"
+# UI_DISABLE_PLAYER = "false"
+# UI_SECOND_DOMAIN_FOR_DL = "false"
+# UI_UNAUTHORIZED_OWNER_LINK = "#"
+# UI_UNAUTHORIZED_OWNER_EMAIL = ""
+# UI_SHOW_QUOTA = "false"

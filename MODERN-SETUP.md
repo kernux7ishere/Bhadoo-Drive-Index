@@ -160,7 +160,11 @@ served through the index.
 ## 4. Configuration reference
 
 Everything below is a plain `[vars]` entry in `wrangler.toml` (strings only).
-Edit it and run `npx wrangler deploy` again.
+Only `SITE_NAME`, `ENVIRONMENT`, `ROOTS` and `USE_SERVICE_ACCOUNT` are active by
+default; the rest are commented out and use the defaults in `src/worker.js`.
+Uncomment what you want to change, then run `npx wrangler deploy` again.
+Workers Free allows 32 variables (vars + secrets) per Worker, so enable only
+what you need or use Workers Paid.
 
 | Group | Variables |
 |---|---|
