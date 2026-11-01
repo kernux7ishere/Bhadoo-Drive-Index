@@ -6,16 +6,15 @@ GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REFRESH_TOKEN=your-refresh-token
 
-# Only needed when USE_SERVICE_ACCOUNT=true
-# Paste the entire service account JSON as a single line (or use `wrangler secret put`)
+# Generate your own: openssl rand -hex 16  /  openssl rand -hex 32
+CRYPTO_BASE_KEY=change-me-change-me-change-me-12
+HMAC_BASE_KEY=generate-with-openssl-rand-hex-32-at-least-32-chars
+
+# Only needed when USE_SERVICE_ACCOUNT=true (one account object or an array)
 # SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 
-# ── Plain vars (copy from wrangler.toml, override here for local dev) ─────────
-SITE_NAME=Bhadoo Drive Index
-USE_SERVICE_ACCOUNT=false
-ROOTS=[{"id":"root","name":"My Drive","protect_file_link":false}]
+# Only needed when ENABLE_LOGIN=true and LOGIN_DATABASE=Local
+# USERS_JSON=[{"username":"admin","password":"change-me"}]
 
-UI_THEME=slate
-UI_COPYRIGHT_YEAR=2025
-UI_COMPANY_NAME=My Drive Index
-UI_COMPANY_LINK=https://github.com
+# ── Plain vars (override wrangler.toml for local dev) ─────────────────────────
+ENVIRONMENT=development

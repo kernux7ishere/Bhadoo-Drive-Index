@@ -80,7 +80,13 @@ npx wrangler login
 npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put GOOGLE_REFRESH_TOKEN
+npx wrangler secret put CRYPTO_BASE_KEY   # 16/24/32 chars: openssl rand -hex 16
+npx wrangler secret put HMAC_BASE_KEY     # 32+ chars:      openssl rand -hex 32
 ```
+
+`CRYPTO_BASE_KEY` and `HMAC_BASE_KEY` sign and encrypt download links and
+sessions. v2.5.9 no longer ships default keys, so the Worker refuses to start
+until you set your own.
 
 Enter each value when prompted. For a **service account** instead of
 OAuth, also run:
@@ -99,13 +105,13 @@ entry is one indexed drive or folder.
 
 ```toml
 # Single personal drive (root)
-ROOTS = '[{"id":"root","name":"My Drive","protect_file_link":false}]'
+ROOTS = '[{"id":"root","type":"root","name":"My Drive","protect_file_link":false}]'
 
 # Shared / Team Drive — replace the ID with your own
-ROOTS = '[{"id":"0AOM2i7MQiuWIUk9PVA","name":"Team Drive","protect_file_link":false}]'
+ROOTS = '[{"id":"0AOM2i7MQiuWIUk9PVA","type":"shared_drive","name":"Team Drive","protect_file_link":false}]'
 
 # Multiple drives
-ROOTS = '[{"id":"root","name":"Personal"},{"id":"0AOM2i7MQiuWIUk9PVA","name":"Team"}]'
+ROOTS = '[{"id":"root","type":"root","name":"Personal"},{"id":"0AOM2i7MQiuWIUk9PVA","type":"shared_drive","name":"Team"}]'
 ```
 
 The `id` field is either `"root"` for a personal drive, a **Shared
@@ -125,18 +131,23 @@ npx wrangler deploy
 
 ## 3. Protect access to a drive
 
-### 3.1 HTTP Basic Auth (per-drive, via `ROOTS`)
+### 3.1 Login system (site-wide, recommended)
 
-Add an `"auth"` object to a root entry in `ROOTS`:
+Set `ENABLE_LOGIN = "true"` in `wrangler.toml`, then provide users:
 
-```toml
-ROOTS = '[{"id":"root","name":"My Drive","protect_file_link":true,"auth":{"alice":"password1","bob":"password2"}}]'
-```
+- `LOGIN_DATABASE = "Local"`: `npx wrangler secret put USERS_JSON` with
+  `[{"username":"admin","password":"a-strong-password"}]`
+- `LOGIN_DATABASE = "KV"` or `"D1"`: add the matching `ENV` / `DB` binding.
 
-- Keys are usernames, values are passwords.
-- **Enable this before exposing any private data on a public Worker.**
+Per root, `"protect_file_link": true` also requires a login for file
+downloads from that root. Add `DISABLE_ANONYMOUS_DOWNLOAD = "true"` and
+`DIRECT_LINK_PROTECTION = "true"` to block unauthenticated direct links.
+
+**Enable login before indexing private data on a public Worker.**
 
 ### 3.2 Folder-level `.password` file
+
+Requires `ENABLE_PASSWORD_FILE_VERIFY = "true"` (default is `false`).
 
 Create a file named `.password` inside any Google Drive folder you want
 to protect. The file should contain only the password text (plain,
@@ -146,53 +157,28 @@ served through the index.
 
 ---
 
-## 4. UI customisation
+## 4. Configuration reference
 
-All UI options are plain `[vars]` in `wrangler.toml`. Edit them and
-re-run `npx wrangler deploy` — no code changes needed.
+Everything below is a plain `[vars]` entry in `wrangler.toml` (strings only).
+Edit it and run `npx wrangler deploy` again.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SITE_NAME` | `Bhadoo Drive Index` | Browser tab title |
-| `UI_THEME` | `slate` | [Bootswatch](https://bootswatch.com) theme name |
-| `UI_LOGO_IMAGE` | `true` | `true` = image logo, `false` = text |
-| `UI_LOGO_LINK_NAME` | *(CDN URL)* | Image URL (if `UI_LOGO_IMAGE=true`) or site name text |
-| `UI_LOGO_WIDTH` | `100px` | Logo width (CSS value) |
-| `UI_FAVICON` | *(CDN URL)* | Favicon URL |
-| `UI_FIXED_HEADER` | `true` | Sticky header |
-| `UI_HEADER_PADDING` | `60` | Body top padding in px (match to header state) |
-| `UI_FIXED_FOOTER` | `false` | Sticky footer |
-| `UI_HEADER_STYLE_CLASS` | `navbar-dark bg-primary` | Bootstrap navbar classes |
-| `UI_FOOTER_STYLE_CLASS` | `bg-primary` | Bootstrap footer classes |
-| `UI_CSS_A_TAG_COLOR` | `white` | Link colour |
-| `UI_CSS_P_TAG_COLOR` | `white` | Paragraph text colour |
-| `UI_FOLDER_TEXT_COLOR` | `white` | Folder name colour |
-| `UI_CONTACT_LINK` | — | URL for the Contact button |
-| `UI_COPYRIGHT_YEAR` | current year | Copyright year text |
-| `UI_COMPANY_NAME` | — | Footer company name |
-| `UI_COMPANY_LINK` | — | Footer company URL |
-| `UI_CREDIT` | `true` | Show upstream project credit |
-| `UI_DISPLAY_SIZE` | `true` | Show file sizes |
-| `UI_DISPLAY_TIME` | `false` | Show modified times |
-| `UI_DISPLAY_DOWNLOAD` | `true` | Show download buttons |
-| `UI_DISABLE_PLAYER` | `false` | Hide audio/video player |
-| `UI_DISABLE_VIDEO_DOWNLOAD` | `false` | Hide video download button |
-| `UI_SECOND_DOMAIN_FOR_DL` | `false` | Serve downloads from a different domain |
-| `UI_DOWNLOAD_DOMAIN` | *(empty)* | Download domain URL (requires `UI_SECOND_DOMAIN_FOR_DL=true`) |
-| `UI_POSTER` | *(CDN URL)* | Default video poster image URL |
-| `UI_AUDIO_POSTER` | *(CDN URL)* | Default audio poster image URL |
-| `UI_RENDER_HEAD_MD` | `true` | Render `Head.md` in folders |
-| `UI_RENDER_README_MD` | `true` | Render `Readme.md` in folders |
-| `UI_DISPLAY_DRIVE_LINK` | `false` | Show direct Google Drive link button |
-| `UI_PLYR_IO_VERSION` | `3.6.4` | Plyr.io player version |
-| `UI_PLYR_IO_VIDEO_RES` | `16:9` | Default video aspect ratio |
-| `UI_UNAUTHORIZED_OWNER_LINK` | — | URL shown on 401 error page |
-| `UI_UNAUTHORIZED_OWNER_EMAIL` | — | Email shown on 401 error page |
-| `UI_ARC_CODE` | *(empty)* | arc.io widget code (leave empty to disable) |
-| `FILES_LIST_PAGE_SIZE` | `50` | Files per page |
-| `SEARCH_RESULT_LIST_PAGE_SIZE` | `50` | Search results per page |
-| `ENABLE_CORS_FILE_DOWN` | `false` | Add CORS header to file downloads |
-| `ENABLE_PASSWORD_FILE_VERIFY` | `true` | Enable `.password` file protection |
+| Group | Variables |
+|---|---|
+| General | `SITE_NAME`, `ENVIRONMENT` (`production` default), `ROOTS`, `USE_SERVICE_ACCOUNT` |
+| Listing | `FILES_LIST_PAGE_SIZE`, `SEARCH_RESULT_LIST_PAGE_SIZE`, `SEARCH_ALL_DRIVES` |
+| Access | `ENABLE_PASSWORD_FILE_VERIFY`, `DIRECT_LINK_PROTECTION`, `DISABLE_ANONYMOUS_DOWNLOAD`, `FILE_LINK_EXPIRY`, `ENABLE_CORS_FILE_DOWN`, `CORS_DOMAIN`, `BLOCKED_REGION`, `BLOCKED_ASN`, `DOMAINS_FOR_DL` |
+| Login | `ENABLE_LOGIN`, `ENABLE_SIGNUP`, `ENABLE_SOCIAL_LOGIN`, `LOGIN_DATABASE` (`Local`/`KV`/`D1`), `LOGIN_DAYS`, `ENABLE_IP_LOCK`, `SINGLE_SESSION`, `IP_CHANGED_ACTION`, `REDIRECT_DOMAIN` |
+| UI | `UI_THEME`, `UI_LOGO_IMAGE`, `UI_LOGO_HEIGHT`, `UI_LOGO_WIDTH`, `UI_FAVICON`, `UI_LOGO_LINK_NAME`, `UI_FIXED_HEADER`, `UI_HEADER_PADDING`, `UI_FIXED_FOOTER`, `UI_HIDE_FOOTER`, `UI_*_CLASS`, `UI_CSS_*_COLOR`, `UI_CONTACT_LINK`, `UI_COMPANY_NAME`, `UI_COMPANY_LINK`, `UI_CREDIT`, `UI_DISPLAY_*`, `UI_DISABLE_*`, `UI_ALLOW_SELECTING_FILES`, `UI_SECOND_DOMAIN_FOR_DL`, `UI_POSTER`, `UI_AUDIO_POSTER`, `UI_RENDER_HEAD_MD`, `UI_RENDER_README_MD`, `UI_UNAUTHORIZED_OWNER_LINK`, `UI_UNAUTHORIZED_OWNER_EMAIL`, `UI_SHOW_QUOTA` |
+
+Secrets (set with `wrangler secret put`, never in `wrangler.toml`):
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`,
+`CRYPTO_BASE_KEY`, `HMAC_BASE_KEY`, and optionally `SERVICE_ACCOUNT_JSON`
+(one account or a JSON array; one is picked at random per isolate),
+`USERS_JSON` (for `LOGIN_DATABASE=Local`), `LOGIN_GOOGLE_CLIENT_ID`,
+`LOGIN_GOOGLE_CLIENT_SECRET`.
+
+For `LOGIN_DATABASE=KV` add a `[[kv_namespaces]]` binding named `ENV`; for
+`D1` add a `[[d1_databases]]` binding named `DB`.
 
 ---
 
@@ -211,9 +197,9 @@ npx wrangler dev
 ## 6. Security reminders
 
 - **Never commit** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-  `GOOGLE_REFRESH_TOKEN`, or `SERVICE_ACCOUNT_JSON` to git. Use
+  `GOOGLE_REFRESH_TOKEN`, `CRYPTO_BASE_KEY`, `HMAC_BASE_KEY`, or `SERVICE_ACCOUNT_JSON` to git. Use
   `wrangler secret put` for all of these.
-- **Enable `auth`** on any root before making the Worker public if the
+- **Enable `ENABLE_LOGIN`** before making the Worker public if the
   indexed drive is not intended to be publicly accessible.
 - The `.password` mechanism stores the password inside Google Drive
   itself — not in this repository or in Cloudflare.
