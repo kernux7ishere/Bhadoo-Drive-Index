@@ -103,3 +103,7 @@ public
 worker/script.js
 worker/wrangler.toml
 **/node_modules/
+
+# Wrangler
+.wrangler/
+.dev.vars

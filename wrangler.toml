@@ -1,0 +1,80 @@
+name = "bhadoo-drive-index"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+# Secrets (set via `wrangler secret put`):
+#   GOOGLE_CLIENT_ID
+#   GOOGLE_CLIENT_SECRET
+#   GOOGLE_REFRESH_TOKEN
+#   SERVICE_ACCOUNT_JSON   (only if using a service account)
+#
+# Plain vars (non-sensitive) live here:
+
+[vars]
+SITE_NAME = "Bhadoo Drive Index"
+
+# Roots config — JSON array of drive root objects.
+# Each object: { "id": "root|<folderID>|<sharedDriveID>", "name": "...", "protect_file_link": false }
+# Add "auth": {"user":"pass"} to password-protect a drive.
+#
+# Example single drive:
+#   ROOTS = '[{"id":"root","name":"My Drive","protect_file_link":false}]'
+#
+# Example shared drive:
+#   ROOTS = '[{"id":"0AOM2i7MQiuWIUk9PVA","name":"Team Drive","protect_file_link":false}]'
+ROOTS = '[{"id":"root","name":"Drive One","protect_file_link":false}]'
+
+# Set to "true" to use a service account instead of OAuth
+USE_SERVICE_ACCOUNT = "false"
+
+# ── UI settings ──────────────────────────────────────────────────────────────
+UI_THEME                 = "slate"
+UI_LOGO_IMAGE            = "true"
+UI_LOGO_HEIGHT           = ""
+UI_LOGO_WIDTH            = "100px"
+UI_FAVICON               = "https://cdn.jsdelivr.net/gh/XcodersHub/bhadoo-drive-index@2.0.17-alpha.7/images/favicon.ico"
+UI_LOGO_LINK_NAME        = "https://cdn.jsdelivr.net/gh/jscdn/svg@1.0.3/bhadoo-cloud-logo-white.svg"
+UI_FIXED_HEADER          = "true"
+UI_HEADER_PADDING        = "60"
+UI_FIXED_FOOTER          = "false"
+UI_HEADER_STYLE_CLASS    = "navbar-dark bg-primary"
+UI_FOOTER_STYLE_CLASS    = "bg-primary"
+UI_CSS_A_TAG_COLOR       = "white"
+UI_CSS_P_TAG_COLOR       = "white"
+UI_FOLDER_TEXT_COLOR     = "white"
+UI_LOADING_SPINNER_CLASS = "text-light"
+UI_SEARCH_BUTTON_CLASS   = "btn-outline-success"
+UI_PATH_NAV_ALERT_CLASS  = "alert alert-primary"
+UI_FILE_VIEW_ALERT_CLASS = "alert alert-danger"
+UI_FILE_COUNT_ALERT_CLASS= "alert alert-secondary"
+UI_CONTACT_LINK          = "https://telegram.dog/Telegram"
+UI_COPYRIGHT_YEAR        = "2025"
+UI_COMPANY_NAME          = "My Drive Index"
+UI_COMPANY_LINK          = "https://github.com"
+UI_CREDIT                = "true"
+UI_DISPLAY_SIZE          = "true"
+UI_DISPLAY_TIME          = "false"
+UI_DISPLAY_DOWNLOAD      = "true"
+UI_DISABLE_PLAYER        = "false"
+UI_CUSTOM_SRT_LANG       = ""
+UI_DISABLE_VIDEO_DOWNLOAD= "false"
+UI_SECOND_DOMAIN_FOR_DL  = "false"
+UI_DOWNLOAD_DOMAIN       = ""
+UI_POSTER                = "https://cdn.jsdelivr.net/gh/XcodersHub/bhadoo-drive-index@2.0.10/images/poster.jpg"
+UI_AUDIO_POSTER          = "https://cdn.jsdelivr.net/gh/XcodersHub/bhadoo-drive-index@2.0.10/images/music.jpg"
+UI_JSDELIVR_CDN_SRC      = "https://cdn.jsdelivr.net/gh/XcodersHub/bhadoo-drive-index"
+UI_VERSION               = "2.0.18-beta.1"
+UI_RENDER_HEAD_MD        = "true"
+UI_RENDER_README_MD      = "true"
+UI_DISPLAY_DRIVE_LINK    = "false"
+UI_PLYR_IO_VERSION       = "3.6.4"
+UI_PLYR_IO_VIDEO_RES     = "16:9"
+UI_UNAUTHORIZED_OWNER_LINK  = "https://telegram.dog/Telegram"
+UI_UNAUTHORIZED_OWNER_EMAIL = "abuse@telegram.org"
+UI_ARC_CODE              = ""
+
+# ── Optional tuning ───────────────────────────────────────────────────────────
+FILES_LIST_PAGE_SIZE          = "50"
+SEARCH_RESULT_LIST_PAGE_SIZE  = "50"
+ENABLE_CORS_FILE_DOWN         = "false"
+ENABLE_PASSWORD_FILE_VERIFY   = "true"

@@ -1,0 +1,21 @@
+# Copy this file to .dev.vars for local development (wrangler dev).
+# .dev.vars is already in .gitignore — never commit real credentials.
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REFRESH_TOKEN=your-refresh-token
+
+# Only needed when USE_SERVICE_ACCOUNT=true
+# Paste the entire service account JSON as a single line (or use `wrangler secret put`)
+# SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
+
+# ── Plain vars (copy from wrangler.toml, override here for local dev) ─────────
+SITE_NAME=Bhadoo Drive Index
+USE_SERVICE_ACCOUNT=false
+ROOTS=[{"id":"root","name":"My Drive","protect_file_link":false}]
+
+UI_THEME=slate
+UI_COPYRIGHT_YEAR=2025
+UI_COMPANY_NAME=My Drive Index
+UI_COMPANY_LINK=https://github.com

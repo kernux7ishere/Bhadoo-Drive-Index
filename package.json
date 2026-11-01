@@ -1,0 +1,17 @@
+{
+  "name": "bhadoo-drive-index",
+  "version": "2.0.18",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "secret:client-id": "wrangler secret put GOOGLE_CLIENT_ID",
+    "secret:client-secret": "wrangler secret put GOOGLE_CLIENT_SECRET",
+    "secret:refresh-token": "wrangler secret put GOOGLE_REFRESH_TOKEN",
+    "secret:service-account": "wrangler secret put SERVICE_ACCOUNT_JSON"
+  },
+  "devDependencies": {
+    "wrangler": "^3.114.17"
+  }
+}
