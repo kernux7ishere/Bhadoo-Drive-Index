@@ -1,6 +1,8 @@
 // Software: Bhadoo Drive Index (Modern ES Module Worker)
 // Backends: Google Drive (OAuth / Service Account via ACCOUNTS_JSON) + Cloudflare R2
 
+import { BUNDLED_APP_JS } from './app_bundle.js';
+
 let environment, domain_for_dl, blocked_region, blocked_asn, CDN_VERSION;
 let authConfig, uiConfig, player_config, crypto_base_key, hmac_base_key;
 let cdn_base, dev_mode, app_js_file, css_file, homepage_js_file;
@@ -247,6 +249,14 @@ function html(current_drive_order = 0, model = {}) {
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="${css_file}">
+  <style>
+    .gdi-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .gdi-sort-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .gdi-sort-label { font-size: 13px; color: var(--gdi-text-muted); margin: 0; display: inline-flex; align-items: center; gap: 4px; user-select: none; }
+    .gdi-sort-select { background: var(--gdi-surface); border: 1px solid var(--gdi-border); border-radius: 6px; padding: 4px 8px; font-size: 13px; color: var(--gdi-text); outline: none; }
+    .gdi-sort-select:focus { border-color: var(--gdi-accent); }
+    .gdi-count-bar { border-bottom: 1px solid var(--gdi-border); border-top: none; }
+  </style>
   <script>
   window.drive_names = JSON.parse('${htmlSafeJSON(authConfig.roots.map(it => it.name))}');
   window.MODEL = JSON.parse('${htmlSafeJSON(model)}');
@@ -1221,7 +1231,7 @@ function initConfig(env) {
   DB = env.DB;
   cdn_base = 'https://cdn.jsdelivr.net/npm/@googledrive/index@' + CDN_VERSION;
   dev_mode = environment !== 'production';
-  app_js_file = environment === 'local' ? 'http://127.0.0.1:5500/src/app.js' : cdn_base + '/src/app.min.js';
+  app_js_file = '/app.js';
   css_file = environment === 'local' ? 'http://127.0.0.1:5500/assets/gdi.css' : cdn_base + '/assets/gdi.min.css';
   homepage_js_file = environment === 'local' ? 'http://127.0.0.1:5500/assets/homepage.js' : cdn_base + '/assets/homepage.min.js';
   homepage = makeHomepage();
@@ -1237,6 +1247,16 @@ async function handleRequest(request, event) {
   const url = new URL(request.url);
   const path = url.pathname;
   const hostname = url.hostname;
+
+  if (path === '/app.js') {
+    return new Response(BUNDLED_APP_JS, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
+  }
 
   if (path === '/sw.js') {
     const swResp = await fetch(cdn_base + '/sw.js');

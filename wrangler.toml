@@ -14,62 +14,6 @@ compatibility_flags = ["nodejs_compat"]
 # NOTE: Workers Free allows at most 32 variables per Worker (vars + secrets).
 
 [vars]
-SITE_NAME = "Cloud Index"
 ENVIRONMENT = "production"
-
-# JSON array of drives/buckets to index.
-# For Google Drive: type = "root" | "folder" | "shared_drive", and "account" picks the account name from ACCOUNTS_JSON.
-# For Cloudflare R2: type = "r2", and "id" or "bucket" names the [[r2_buckets]] binding.
-# Generate ACCOUNTS_JSON and SCOPE from rclone.conf with: npm run rclone:import
-SCOPE = '[{"id":"root","type":"root","name":"My Drive","account":"default","protect_file_link":false}]'
-
-# ── Optional R2 Bucket Binding ───────────────────────────────────────────────
-# Uncomment and bind your R2 bucket if you want to index R2 storage:
-# [[r2_buckets]]
-# binding = "MY_BUCKET"
-# bucket_name = "your-bucket-name"
-
-# ── Optional overrides (defaults shown; uncomment to change) ─────────────────
-# FILES_LIST_PAGE_SIZE = "100"
-# SEARCH_RESULT_LIST_PAGE_SIZE = "100"
-# ENABLE_CORS_FILE_DOWN = "false"
-# ENABLE_PASSWORD_FILE_VERIFY = "false"
-# DIRECT_LINK_PROTECTION = "false"
-# DISABLE_ANONYMOUS_DOWNLOAD = "false"
-# FILE_LINK_EXPIRY = "7"
-# SEARCH_ALL_DRIVES = "true"
-# CORS_DOMAIN = "*"
-# BLOCKED_REGION = ""       # e.g. "IN,US"
-# BLOCKED_ASN = ""          # e.g. "16509,12345"
-# DOMAINS_FOR_DL = ""       # e.g. "https://a.workers.dev,https://b.workers.dev"
-#
-# Login system
-# ENABLE_LOGIN = "false"
-# ENABLE_SIGNUP = "false"
-# ENABLE_SOCIAL_LOGIN = "false"
-# LOGIN_DATABASE = "Local"  # Local | KV | D1
-# LOGIN_DAYS = "7"
-# ENABLE_IP_LOCK = "false"
-# SINGLE_SESSION = "false"
-# IP_CHANGED_ACTION = "false"
-# REDIRECT_DOMAIN = ""
-#
-# UI
-# UI_THEME = "darkly"
-# UI_LOGO_IMAGE = "true"
-# UI_LOGO_WIDTH = "100px"
-# UI_FIXED_HEADER = "true"
-# UI_HEADER_PADDING = "80"
-# UI_HIDE_FOOTER = "true"
-# UI_CONTACT_LINK = "#"
-# UI_COMPANY_NAME = "Cloud Index"
-# UI_COMPANY_LINK = "#"
-# UI_CREDIT = "true"
-# UI_DISPLAY_SIZE = "true"
-# UI_DISPLAY_TIME = "false"
-# UI_DISPLAY_DOWNLOAD = "true"
-# UI_DISABLE_PLAYER = "false"
-# UI_SECOND_DOMAIN_FOR_DL = "false"
-# UI_UNAUTHORIZED_OWNER_LINK = "#"
-# UI_UNAUTHORIZED_OWNER_EMAIL = ""
-# UI_SHOW_QUOTA = "false"
+SCOPE = "[{\"id\":\"root\",\"type\":\"root\",\"name\":\"drive-brick\",\"account\":\"drive-brick\",\"protect_file_link\":false},{\"id\":\"root\",\"type\":\"root\",\"name\":\"drive-inv\",\"account\":\"drive-inv\",\"protect_file_link\":false},{\"id\":\"root\",\"type\":\"root\",\"name\":\"drive-linus\",\"account\":\"drive-linus\",\"protect_file_link\":false}]"
+SITE_NAME = "Cloud Index"
