@@ -98,6 +98,46 @@ npx wrangler secret put SERVICE_ACCOUNT_JSON
 and paste the entire contents of your service account `.json` file as
 one line, then set `USE_SERVICE_ACCOUNT = "true"` in `wrangler.toml`.
 
+### 2.4a Multiple Google accounts
+
+Skip the three `GOOGLE_*` secrets and put every account in one secret,
+`ACCOUNTS_JSON`: a JSON array where each entry has a unique `name` and either
+OAuth credentials or a service account key.
+
+```json
+[
+  {"name":"work","client_id":"...","client_secret":"...","refresh_token":"..."},
+  {"name":"sa1","service_account_json":{"client_email":"...","private_key":"..."}}
+]
+```
+
+Each root in `ROOTS` then selects its account with `"account": "<name>"`
+(a numeric array index also works). Roots without `account` fall back to the
+`GOOGLE_*` / `SERVICE_ACCOUNT_JSON` secrets, so existing setups keep working.
+Several roots may share one account (for example many Shared Drives of one
+login). Each account keeps its own access token, and download links remember
+which account to use.
+
+Cloudflare limits a secret to 5 KB. If the array is larger, split it across
+`ACCOUNTS_JSON`, `ACCOUNTS_JSON_2`, ... `ACCOUNTS_JSON_9`.
+
+**Already use rclone?** Convert its remotes instead of typing this by hand:
+
+```bash
+npm run rclone:import                 # interactive: a / e <list> / g <list>
+npm run rclone:import -- --all --verify --push
+npm run rclone:import -- --get work 3 --dev-vars .dev.vars
+```
+
+The script reads the `type = drive` remotes in `rclone.conf`, merges remotes that
+share a login, and writes `accounts.json` (secret, mode 0600) and `roots.json`
+(public) to `./bhadoo-secrets`. `--verify` checks each refresh token with Google,
+and `--push` uploads the secrets with `wrangler secret put`, splitting them into
+`ACCOUNTS_JSON_N` automatically. It prints the `ROOTS = '...'` line to paste into
+`wrangler.toml`. Delete the output directory afterwards. Remotes that use rclone's
+built-in OAuth client are skipped because their client secret is not stored in
+`rclone.conf`.
+
 ### 2.5 Configure your drive roots
 
 Edit the `ROOTS` variable in `wrangler.toml`. It is a JSON array; each
@@ -113,6 +153,8 @@ ROOTS = '[{"id":"0AOM2i7MQiuWIUk9PVA","type":"shared_drive","name":"Team Drive",
 # Multiple drives
 ROOTS = '[{"id":"root","type":"root","name":"Personal"},{"id":"0AOM2i7MQiuWIUk9PVA","type":"shared_drive","name":"Team"}]'
 ```
+
+Add `"account":"<name>"` to a root to use an `ACCOUNTS_JSON` entry (see 2.4a).
 
 The `id` field is either `"root"` for a personal drive, a **Shared
 Drive ID** (the last path segment from the Drive URL), or a **folder
@@ -178,7 +220,7 @@ Secrets (set with `wrangler secret put`, never in `wrangler.toml`):
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`,
 `CRYPTO_BASE_KEY`, `HMAC_BASE_KEY`, and optionally `SERVICE_ACCOUNT_JSON`
 (one account or a JSON array; one is picked at random per isolate),
-`USERS_JSON` (for `LOGIN_DATABASE=Local`), `LOGIN_GOOGLE_CLIENT_ID`,
+`ACCOUNTS_JSON` (+ `ACCOUNTS_JSON_2`..`_9`), `USERS_JSON` (for `LOGIN_DATABASE=Local`), `LOGIN_GOOGLE_CLIENT_ID`,
 `LOGIN_GOOGLE_CLIENT_SECRET`.
 
 For `LOGIN_DATABASE=KV` add a `[[kv_namespaces]]` binding named `ENV`; for

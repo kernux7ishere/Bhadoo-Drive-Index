@@ -6,6 +6,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging",
+    "rclone:import": "python3 scripts/rclone-to-accounts.py",
+    "secret:accounts": "wrangler secret put ACCOUNTS_JSON",
     "secret:client-id": "wrangler secret put GOOGLE_CLIENT_ID",
     "secret:client-secret": "wrangler secret put GOOGLE_CLIENT_SECRET",
     "secret:refresh-token": "wrangler secret put GOOGLE_REFRESH_TOKEN",

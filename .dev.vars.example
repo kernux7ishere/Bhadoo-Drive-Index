@@ -2,6 +2,13 @@
 # .dev.vars is already in .gitignore — never commit real credentials.
 
 # ── Secrets ───────────────────────────────────────────────────────────────────
+# Multi-account (recommended). Generate with:
+#   npm run rclone:import -- --dev-vars .dev.vars
+# Each ROOTS entry picks an account by its "account" name.
+# ACCOUNTS_JSON=[{"name":"work","client_id":"...","client_secret":"...","refresh_token":"..."},{"name":"sa1","service_account_json":{"client_email":"...","private_key":"..."}}]
+# ROOTS=[{"id":"root","type":"root","name":"Work","account":"work"},{"id":"0AAA...","type":"shared_drive","name":"Team","account":"sa1"}]
+
+# Single account: used by every root that has no "account".
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REFRESH_TOKEN=your-refresh-token

@@ -4,11 +4,12 @@
 // Nothing sensitive is hard-coded. Secrets come from `wrangler secret put`,
 // non-secret options come from [vars] in wrangler.toml.
 
-let environment, randomserviceaccount, domain_for_dl, blocked_region, blocked_asn, CDN_VERSION;
+let environment, domain_for_dl, blocked_region, blocked_asn, CDN_VERSION;
 let authConfig, uiConfig, player_config, crypto_base_key, hmac_base_key;
 let drive_list, cdn_base, dev_mode, app_js_file, css_file, homepage_js_file;
-let homepage, login_html, drive, ENV, DB;
+let homepage, login_html, ENV, DB;
 let configReady = false;
+let drivesReady = null;
 const gds = [];
 
 function envBool(v, def) {
@@ -41,18 +42,153 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function buildAuthConfig(env) {
-  const roots = envJSON(env.ROOTS, [{ id: 'root', type: 'root', name: 'My Drive', protect_file_link: false }], 'ROOTS');
+// ─── Credentials ─────────────────────────────────────────────────────────────
+// One Credential per Google account. Each keeps its own access token cache and
+// de-duplicates concurrent refreshes, so many accounts never share a token.
+
+const ACCOUNT_SECRET_CHUNKS = 9; // ACCOUNTS_JSON, ACCOUNTS_JSON_2 ... ACCOUNTS_JSON_9
+
+class Credential {
+  constructor(spec, label) {
+    this.label = label;
+    this.client_id = spec.client_id;
+    this.client_secret = spec.client_secret;
+    this.refresh_token = spec.refresh_token;
+    this.service_account_json = spec.service_account_json;
+    this.accessToken = null;
+    this.expires = 0;
+    this.pending = null;
+  }
+
+  async getAccessToken() {
+    if (this.accessToken && this.expires > Date.now()) return this.accessToken;
+    if (!this.pending) {
+      this.pending = this._refresh().finally(() => { this.pending = null; });
+    }
+    return this.pending;
+  }
+
+  async _refresh() {
+    let post_data;
+    if (this.service_account_json) {
+      const assertion = await JSONWebToken.generateGCPToken(this.service_account_json);
+      post_data = { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion };
+    } else {
+      post_data = {
+        client_id: this.client_id,
+        client_secret: this.client_secret,
+        refresh_token: this.refresh_token,
+        grant_type: 'refresh_token',
+      };
+    }
+    const requestOption = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: enQuery(post_data),
+    };
+    let response;
+    for (let i = 0; i < 3; i++) {
+      response = await fetch('https://www.googleapis.com/oauth2/v4/token', requestOption);
+      if (response.ok) break;
+      // Bad credentials will not fix themselves; only retry server-side errors.
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) break;
+      await sleep(800 * (i + 1));
+    }
+    if (!response.ok) {
+      let code = '';
+      try { code = (await response.json()).error || ''; } catch (_) {}
+      throw new Error(`Token request failed for account "${this.label}" (HTTP ${response.status}${code ? ' ' + code : ''})`);
+    }
+    const obj = await response.json();
+    if (!obj.access_token) throw new Error(`Token response for account "${this.label}" has no access_token`);
+    this.accessToken = obj.access_token;
+    this.expires = Date.now() + 3300 * 1000;
+    return this.accessToken;
+  }
+}
+
+function credentialSpec(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.service_account_json && raw.service_account_json.private_key) return { service_account_json: raw.service_account_json };
+  if (raw.client_email && raw.private_key) return { service_account_json: raw };
+  if (raw.client_id && raw.client_secret && raw.refresh_token) {
+    return { client_id: raw.client_id, client_secret: raw.client_secret, refresh_token: raw.refresh_token };
+  }
+  return null;
+}
+
+// ACCOUNTS_JSON is a JSON array of accounts. A single secret is capped at 5 KB by
+// Cloudflare, so extra arrays may be supplied as ACCOUNTS_JSON_2 ... ACCOUNTS_JSON_9.
+function loadAccounts(env) {
+  const accounts = [];
+  for (let n = 1; n <= ACCOUNT_SECRET_CHUNKS; n++) {
+    const key = n === 1 ? 'ACCOUNTS_JSON' : `ACCOUNTS_JSON_${n}`;
+    const arr = envJSON(env[key], null, key);
+    if (arr === null) continue;
+    if (!Array.isArray(arr)) throw new Error(`${key} must be a JSON array`);
+    for (const raw of arr) {
+      const index = accounts.length;
+      const spec = credentialSpec(raw);
+      if (!spec) {
+        throw new Error(`Account #${index} in ${key} needs client_id + client_secret + refresh_token, or a service account key`);
+      }
+      const name = String((raw && raw.name) || (spec.service_account_json && spec.service_account_json.client_email) || `account-${index}`);
+      if (accounts.some(a => a.label === name)) throw new Error(`Duplicate account name "${name}" in ACCOUNTS_JSON`);
+      accounts.push(new Credential(spec, name));
+    }
+  }
+  return accounts;
+}
+
+// Optional single-account credentials from GOOGLE_* / SERVICE_ACCOUNT_JSON.
+function loadDefaultCredential(env) {
   const saRaw = envJSON(env.SERVICE_ACCOUNT_JSON, null, 'SERVICE_ACCOUNT_JSON');
   const serviceaccounts = saRaw ? (Array.isArray(saRaw) ? saRaw : [saRaw]) : [];
-  randomserviceaccount = serviceaccounts.length ? pickRandom(serviceaccounts) : undefined;
+  if (envBool(env.USE_SERVICE_ACCOUNT, false)) {
+    if (!serviceaccounts.length) return { cred: null, missing: ['SERVICE_ACCOUNT_JSON'] };
+    const sa = pickRandom(serviceaccounts);
+    return { cred: new Credential({ service_account_json: sa }, sa.client_email || 'service-account'), missing: [] };
+  }
+  const spec = { client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: env.GOOGLE_REFRESH_TOKEN };
+  const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN'].filter(k => !env[k]);
+  return { cred: missing.length ? null : new Credential(spec, 'default'), missing };
+}
+
+// root.account selects an ACCOUNTS_JSON entry by name or index. Without it the
+// root uses the default GOOGLE_* credential. Credentials written inline in a root
+// (client_id/client_secret/refresh_token) still work but belong in ACCOUNTS_JSON.
+function resolveRootCredential(root, accounts, defaultCred, defaultMissing) {
+  const label = root.name || root.id;
+  const inline = credentialSpec(root);
+  if (inline) return { cred: new Credential(inline, `root:${label}`) };
+  const ref = root.account;
+  if (ref !== undefined && ref !== null && ref !== '') {
+    const cred = typeof ref === 'number' ? accounts[ref] : accounts.find(a => a.label === String(ref));
+    if (!cred) return { error: `root "${label}" references unknown account ${JSON.stringify(ref)}` };
+    return { cred };
+  }
+  if (defaultCred) return { cred: defaultCred };
+  return { error: `root "${label}" has no credentials (set "account" in ROOTS, or provide ${defaultMissing.join(', ')})` };
+}
+
+function buildAuthConfig(env) {
+  const roots = envJSON(env.ROOTS, [{ id: 'root', type: 'root', name: 'My Drive', protect_file_link: false }], 'ROOTS');
+  if (!Array.isArray(roots) || !roots.length) throw new Error('ROOTS must be a non-empty JSON array');
+  roots.forEach((r, i) => { if (!r || !r.id) throw new Error(`ROOTS[${i}] is missing "id"`); });
+
+  const accounts = loadAccounts(env);
+  const def = loadDefaultCredential(env);
+  const rootCredentials = [];
+  const credentialProblems = [];
+  roots.forEach(r => {
+    const res = resolveRootCredential(r, accounts, def.cred, def.missing);
+    if (res.error) credentialProblems.push(res.error);
+    rootCredentials.push(res.cred);
+  });
   return {
     siteName: env.SITE_NAME || 'Google Drive Index',
-    client_id: env.GOOGLE_CLIENT_ID || '',
-    client_secret: env.GOOGLE_CLIENT_SECRET || '',
-    refresh_token: env.GOOGLE_REFRESH_TOKEN || '',
-    service_account: envBool(env.USE_SERVICE_ACCOUNT, false),
-    service_account_json: randomserviceaccount,
+    credential_problems: credentialProblems,
+    root_credentials: rootCredentials,
     files_list_page_size: envInt(env.FILES_LIST_PAGE_SIZE, 100),
     search_result_list_page_size: envInt(env.SEARCH_RESULT_LIST_PAGE_SIZE, 100),
     enable_cors_file_down: envBool(env.ENABLE_CORS_FILE_DOWN, false),
@@ -88,16 +224,7 @@ function validateConfig(env, auth) {
   else if (env.HMAC_BASE_KEY.length < 32) {
     throw new Error('HMAC_BASE_KEY must be at least 32 characters (use: openssl rand -hex 32)');
   }
-  const rootHasOwnCreds = r => (r.client_id && r.client_secret && r.refresh_token) || (r.service_account && r.service_account_json);
-  if (!auth.roots.every(rootHasOwnCreds)) {
-    if (auth.service_account) {
-      if (!auth.service_account_json) missing.push('SERVICE_ACCOUNT_JSON');
-    } else {
-      if (!auth.client_id) missing.push('GOOGLE_CLIENT_ID');
-      if (!auth.client_secret) missing.push('GOOGLE_CLIENT_SECRET');
-      if (!auth.refresh_token) missing.push('GOOGLE_REFRESH_TOKEN');
-    }
-  }
+  missing.push(...auth.credential_problems);
   if (auth.enable_login) {
     const db = auth.login_database.toLowerCase();
     if (db === 'kv' && !env.ENV) missing.push('KV binding "ENV"');
@@ -950,20 +1077,10 @@ async function handleRequest(request, event) {
     }
   }
 
-  if (gds.length === 0) {
-    for (let i = 0; i < authConfig.roots.length; i++) {
-      const gd = new googleDrive(authConfig, i);
-      await gd.init();
-      gds.push(gd);
-    }
-    const tasks = [];
-    gds.forEach(gd => {
-      tasks.push(gd.initRootType());
-    });
-    for (const task of tasks) {
-      await task;
-    }
+  if (!drivesReady) {
+    drivesReady = initDrives().catch(err => { drivesReady = null; throw err; });
   }
+  await drivesReady;
 
   let gd;
 
@@ -1012,13 +1129,11 @@ async function handleRequest(request, event) {
         return Response.redirect(url.origin + '/' + found_drive + ':' + found_path + suffix, 302);
       }
       // Not in any drive hierarchy — check if accessible via credentials (fallback)
-      try {
-        const file = await gds[0].findItemById(raw_id);
-        if (file && file.id) {
-          const encrypted_id = await encryptString(raw_id);
-          return Response.redirect(url.origin + '/fallback?id=' + encodeURIComponent(encrypted_id), 302);
-        }
-      } catch (_) {}
+      const hit = await findItemAcrossDrives(raw_id);
+      if (hit) {
+        const encrypted_id = await encryptString(raw_id);
+        return Response.redirect(url.origin + '/fallback?id=' + encodeURIComponent(encrypted_id) + '&drive=' + hit.gd.order, 302);
+      }
       return new Response(JSON.stringify({ error: 'File not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json;charset=UTF-8' }
@@ -1055,13 +1170,11 @@ async function handleRequest(request, event) {
       return Response.redirect(url.origin + '/' + found_drive_idx + ':' + found_path + suffix, 302);
     }
     // Not in any configured drive hierarchy — check if accessible via credentials (fallback)
-    try {
-      const file = await gds[0].findItemById(id);
-      if (file && file.id) {
-        const encrypted_id = await encryptString(id);
-        return Response.redirect(url.origin + '/fallback?id=' + encodeURIComponent(encrypted_id), 302);
-      }
-    } catch (_) {}
+    const hit = await findItemAcrossDrives(id);
+    if (hit) {
+      const encrypted_id = await encryptString(id);
+      return Response.redirect(url.origin + '/fallback?id=' + encodeURIComponent(encrypted_id) + '&drive=' + hit.gd.order, 302);
+    }
     return new Response(JSON.stringify({ error: 'File not found' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json;charset=UTF-8' }
@@ -1074,7 +1187,8 @@ async function handleRequest(request, event) {
       },
     });
   } else if (path == '/fallback') {
-    return new Response(html(0, {
+    const fb_order = Number(url.searchParams.get('drive'));
+    return new Response(html(fb_order >= 0 && fb_order < gds.length ? fb_order : 0, {
       is_search_page: false,
       root_type: 1
     }), {
@@ -1115,7 +1229,12 @@ async function handleRequest(request, event) {
       const range = request.headers.get('Range');
       const inline = 'true' === url.searchParams.get('inline');
       const fmt = url.searchParams.get('fmt') || null;
-      return download(file, range, inline, fmt);
+      const sep = file.indexOf(':');
+      const order = sep > 0 ? Number(file.slice(0, sep)) : 0;
+      const file_id = sep > 0 ? file.slice(sep + 1) : file;
+      const gd_dl = gds[order];
+      if (!gd_dl) return new Response('Invalid Request!', { status: 400, headers: { "content-type": "text/html;charset=UTF-8" } });
+      return download(gd_dl, file_id, range, inline, fmt);
     } else {
       return new Response('Invalid Request!', {
         status: 401,
@@ -1147,7 +1266,8 @@ async function handleRequest(request, event) {
       });
     }
     const copyUrl = `https://www.googleapis.com/drive/v3/files/${file_id}/copy?supportsAllDrives=true`;
-    const gd0 = gds[0];
+    const copy_order = Number(formdata.get('drive') || 0);
+    const gd0 = gds[copy_order] || gds[0];
     const reqOpts = await gd0.requestOptions({ 'Content-Type': 'application/json' }, 'POST');
     reqOpts.body = JSON.stringify({ parents: [root_id] });
     const copyResp = await fetch(copyUrl, reqOpts);
@@ -1231,7 +1351,7 @@ async function handleRequest(request, event) {
         }
         for (const file of details.data.files) {
           if (file.mimeType != 'application/vnd.google-apps.folder') {
-            file.link = await generateLink(file.id, user_ip);
+            file.link = await generateLink(file.id, user_ip, gd.order);
           }
           file.driveId = await encryptString(file.driveId || '');
           file.id = await encryptString(file.id);
@@ -1246,7 +1366,7 @@ async function handleRequest(request, event) {
           status: 404, headers: { 'Content-Type': 'application/json;charset=UTF-8' }
         });
       }
-      details.link = await generateLink(details.id, user_ip);
+      details.link = await generateLink(details.id, user_ip, gd.order);
       details.id = formdata.id;
       if (Array.isArray(details.parents) && details.parents.length > 0) {
         details.parents[0] = null;
@@ -1320,7 +1440,7 @@ async function handleRequest(request, event) {
     if (!file || !file.id) {
       return new Response(not_found, { status: 404, headers: { 'content-type': 'text/html;charset=UTF-8' } });
     }
-    return download(file.id, range, inline);
+    return download(gd, file.id, range, inline);
 
   }
 
@@ -1337,62 +1457,13 @@ function enQuery(data) {
   return ret.join('&');
 }
 
-async function getAccessToken() {
-  if (authConfig.expires == undefined || authConfig.expires < Date.now()) {
-    const obj = await fetchAccessToken();
-    if (obj.access_token != undefined) {
-      authConfig.accessToken = obj.access_token;
-      authConfig.expires = Date.now() + 3500 * 1000;
-    }
-  }
-  return authConfig.accessToken;
-}
-
-async function fetchAccessToken() {
-  const url = "https://www.googleapis.com/oauth2/v4/token";
-  const headers = {
-    'Content-Type': 'application/x-www-form-urlencoded'
-  };
-  let post_data;
-  if (authConfig.service_account && typeof authConfig.service_account_json != "undefined") {
-    const jwttoken = await JSONWebToken.generateGCPToken(authConfig.service_account_json);
-    post_data = {
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwttoken,
-    };
-  } else {
-    post_data = {
-      client_id: authConfig.client_id,
-      client_secret: authConfig.client_secret,
-      refresh_token: authConfig.refresh_token,
-      grant_type: "refresh_token",
-    };
-  }
-
-  const requestOption = {
-    'method': 'POST',
-    'headers': headers,
-    'body': enQuery(post_data)
-  };
-
-  let response;
-  for (let i = 0; i < 3; i++) {
-    response = await fetch(url, requestOption);
-    if (response.ok) {
-      break;
-    }
-    await sleep(800 * (i + 1));
-  }
-  if (!response.ok) {
-    throw new Error(`fetchAccessToken failed with status ${response.status}`);
-  }
-  return await response.json();
-}
-
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-async function generateLink(file_id, user_ip) {
+// The signed payload is "<drive order>:<file id>" so download.aspx knows which
+// account to use. Legacy links carry a bare file id and map to drive 0.
+async function generateLink(raw_file_id, user_ip, order = 0) {
+  const file_id = `${order}:${raw_file_id}`;
   const encrypted_id = await encryptString(file_id);
   const expiry = Date.now() + 1000 * 60 * 60 * 24 * authConfig.file_link_expiry;
   const encrypted_expiry = await encryptString(expiry.toString());
@@ -1450,7 +1521,7 @@ async function apiRequest(request, gd, user_ip) {
 
       let link = null;
       if (mimeType !== 'application/vnd.google-apps.folder') {
-        link = await generateLink(id, user_ip);
+        link = await generateLink(id, user_ip, gd.order);
       }
 
       return {
@@ -1489,7 +1560,7 @@ async function apiRequest(request, gd, user_ip) {
 
     const encryptedId = await encryptString(id);
     const encryptedDriveId = await encryptString(driveId);
-    const link = await generateLink(id, user_ip);
+    const link = await generateLink(id, user_ip, gd.order);
     const encryptedFile = {
       ...fileWithoutId,
       id: encryptedId,
@@ -1544,7 +1615,7 @@ async function handleSearch(request, gd, user_ip = '') {
 
     const encryptedId = await encryptString(id);
     const encryptedDriveId = await encryptString(driveId);
-    const link = await generateLink(id, user_ip);
+    const link = await generateLink(id, user_ip, gd.order);
     // rootIdx encoding:
     //  >= 0  file's driveId matches authConfig.roots[rootIdx] — navigate to that root
     //  -1    no driveId (My Drive file) — need parent-chain walk to find folder roots
@@ -1635,13 +1706,11 @@ async function findId2Path(gd, url) {
     return Response.redirect(url.origin + '/' + found_drive_idx + ':' + found_path + suffix, 302);
   }
   // Not in any drive hierarchy — check if accessible via credentials (fallback)
-  try {
-    const file = await gd.findItemById(id);
-    if (file && file.id) {
-      const encrypted_id = await encryptString(id);
-      return Response.redirect(url.origin + '/fallback?id=' + encodeURIComponent(encrypted_id), 302);
-    }
-  } catch (_) {}
+  const hit = await findItemAcrossDrives(id);
+  if (hit) {
+    const encrypted_id = await encryptString(id);
+    return Response.redirect(url.origin + '/fallback?id=' + encodeURIComponent(encrypted_id) + '&drive=' + hit.gd.order, 302);
+  }
   return new Response(JSON.stringify({ error: 'File not found' }), {
     status: 404,
     headers: { 'Content-Type': 'application/json;charset=UTF-8' }
@@ -1657,12 +1726,25 @@ async function findId2Path(gd, url) {
   return await res.json();
 }*/
 
+// Look an id up with every account until one can see it.
+async function findItemAcrossDrives(id) {
+  for (const gd of gds) {
+    try {
+      const file = await gd.findItemById(id);
+      if (file && file.id) return { gd, file };
+    } catch (_) {}
+  }
+  return null;
+}
+
 // start of class googleDrive
 class googleDrive {
   constructor(authConfig, order) {
     this.order = order;
     this.root = authConfig.roots[order];
     this.root.protect_file_link = this.root.protect_file_link || false;
+    this.credential = authConfig.root_credentials[order];
+    this.real_root_id = null;
     this.url_path_prefix = `/${order}:`;
     this.authConfig = authConfig;
     this.paths = [];
@@ -1671,12 +1753,19 @@ class googleDrive {
     this.paths["/"] = this.root['id'];
   }
   async init() {
-    await getAccessToken();
-    if (authConfig.user_drive_real_root_id) return;
-    const root_obj = await (gds[0] || this).findItemById('root');
-    if (root_obj && root_obj.id) {
-      authConfig.user_drive_real_root_id = root_obj.id;
+    try {
+      await this.getRealRootId();
+    } catch (err) {
+      console.error(`Drive ${this.order} (${this.root.name || this.root.id}) init failed: ${err.message}`);
     }
+  }
+
+  // The real id of this account's My Drive ("root" is only an alias), cached per account.
+  async getRealRootId() {
+    if (this.real_root_id) return this.real_root_id;
+    const root_obj = await this.findItemById('root');
+    if (root_obj && root_obj.id) this.real_root_id = root_obj.id;
+    return this.real_root_id;
   }
 
   async initRootType() {
@@ -1692,7 +1781,7 @@ class googleDrive {
       return;
     }
     // fallback: auto-detect (legacy configs without explicit type)
-    if (root_id === 'root' || root_id === authConfig.user_drive_real_root_id) {
+    if (root_id === 'root' || root_id === this.real_root_id) {
       this.root_type = types.user_drive;
     } else {
       this.root_type = types.share_drive;
@@ -1903,9 +1992,8 @@ class googleDrive {
   async findParentFilesRecursion(child_id, drive_index_no, contain_myself = true) {
     const gd = this;
     const gd_root_id = gd.root.id;
-    const user_drive_real_root_id = authConfig.user_drive_real_root_id;
     const is_user_drive = gd.root_type === DriveFixedTerms.gd_root_type.user_drive;
-    const target_top_id = is_user_drive ? user_drive_real_root_id : gd_root_id;
+    const target_top_id = is_user_drive ? await gd.getRealRootId() : gd_root_id;
     const fields = DriveFixedTerms.default_file_fields;
     const parent_files = [];
     let meet_top = false;
@@ -2026,57 +2114,6 @@ class googleDrive {
     return obj.files[0].id;
   }
 
-  /*async getAccessToken() {
-    console.log("accessToken");
-    if (this.authConfig.expires == undefined || this.authConfig.expires < Date.now()) {
-      const obj = await fetchAccessToken();
-      if (obj.access_token != undefined) {
-        this.authConfig.accessToken = obj.access_token;
-        this.authConfig.expires = Date.now() + 3500 * 1000;
-      }
-    }
-    return this.authConfig.accessToken;
-  }*/
-
-  /*async fetchAccessToken() {
-    console.log("fetchAccessToken");
-    const url = "https://www.googleapis.com/oauth2/v4/token";
-    const headers = {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    };
-    var post_data;
-    if (this.authConfig.service_account && typeof this.authConfig.service_account_json != "undefined") {
-      const jwttoken = await JSONWebToken.generateGCPToken(this.authConfig.service_account_json);
-      post_data = {
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: jwttoken,
-      };
-    } else {
-      post_data = {
-        client_id: this.authConfig.client_id,
-        client_secret: this.authConfig.client_secret,
-        refresh_token: this.authConfig.refresh_token,
-        grant_type: "refresh_token",
-      };
-    }
-
-    let requestOption = {
-      'method': 'POST',
-      'headers': headers,
-      'body': enQuery(post_data)
-    };
-
-    let response;
-    for (let i = 0; i < 3; i++) {
-      response = await fetch(url, requestOption);
-      if (response.ok) {
-        break;
-      }
-      await sleep(800 * (i + 1));
-    }
-    return await response.json();
-  }*/
-
   async fetch200(url, requestOption) {
     let response;
     for (let i = 0; i < 3; i++) {
@@ -2098,39 +2135,8 @@ class googleDrive {
     };
   }
 
-  // Returns an access token: per-drive creds if configured, else global
-  async _getAccessToken() {
-    const c = this.root.client_id && this.root.client_secret && this.root.refresh_token
-      ? this.root
-      : (this.root.service_account && this.root.service_account_json ? this.root : null);
-    if (!c) return getAccessToken();
-    // Per-drive token cache stored on the instance
-    if (this._token_expiry && this._token_expiry > Date.now()) return this._access_token;
-    const url = 'https://www.googleapis.com/oauth2/v4/token';
-    const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    let post_data;
-    if (c.service_account && c.service_account_json) {
-      const jwttoken = await JSONWebToken.generateGCPToken(c.service_account_json);
-      post_data = { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwttoken };
-    } else {
-      post_data = { client_id: c.client_id, client_secret: c.client_secret, refresh_token: c.refresh_token, grant_type: 'refresh_token' };
-    }
-    let response;
-    for (let i = 0; i < 3; i++) {
-      response = await fetch(url, { method: 'POST', headers, body: enQuery(post_data) });
-      if (response.ok) break;
-      await sleep(800 * (i + 1));
-    }
-    if (!response.ok) {
-      throw new Error(`Per-drive token fetch failed with status ${response.status}`);
-    }
-    const obj = await response.json();
-    if (!obj.access_token) {
-      throw new Error('Per-drive token response missing access_token');
-    }
-    this._access_token = obj.access_token;
-    this._token_expiry = Date.now() + 3500 * 1000;
-    return this._access_token;
+  _getAccessToken() {
+    return this.credential.getAccessToken();
   }
 
 
@@ -2203,6 +2209,14 @@ function buildUiConfig(env, auth) {
   };
 }
 
+async function initDrives() {
+  const list = authConfig.roots.map((_, i) => new googleDrive(authConfig, i));
+  await Promise.all(list.map(gd => gd.init()));
+  await Promise.all(list.map(gd => gd.initRootType()));
+  gds.length = 0;
+  gds.push(...list);
+}
+
 function initConfig(env) {
   if (configReady) return;
   environment = env.ENVIRONMENT || 'production';
@@ -2230,11 +2244,10 @@ function initConfig(env) {
   homepage_js_file = environment === 'local' ? 'http://127.0.0.1:5500/assets/homepage.js' : cdn_base + '/assets/homepage.min.js';
   homepage = makeHomepage();
   login_html = makeLoginHtml();
-  drive = new googleDrive(authConfig, 0);
   configReady = true;
 }
 
-async function download(id, range = '', inline, exportFmt = null) {
+async function download(drive, id, range = '', inline, exportFmt = null) {
   // Short-circuit: if this is the primary domain and downloads go through a secondary domain,
   // serve the "downloads disabled" page immediately — no Google API call needed.
   if (uiConfig.second_domain_for_dl === true) {

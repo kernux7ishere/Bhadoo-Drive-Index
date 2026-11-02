@@ -4,7 +4,9 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # Secrets (set via `wrangler secret put <NAME>`, never put them in this file):
-#   GOOGLE_CLIENT_ID
+#   ACCOUNTS_JSON          multi-account: JSON array of Google accounts (see MODERN-SETUP.md).
+#                          Overflow goes in ACCOUNTS_JSON_2 ... _9 (Cloudflare caps a secret at 5 KB)
+#   GOOGLE_CLIENT_ID       single-account alternative; used by every root without an "account"
 #   GOOGLE_CLIENT_SECRET
 #   GOOGLE_REFRESH_TOKEN
 #   CRYPTO_BASE_KEY        16/24/32 chars   (openssl rand -hex 16)
@@ -25,6 +27,9 @@ SITE_NAME = "Google Drive Index"
 ENVIRONMENT = "production"
 
 # JSON array of roots. type: "root" | "folder" | "shared_drive"
+# "account" names the ACCOUNTS_JSON entry used for that root (names are not secret);
+# omit it to use GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN.
+# Generate ACCOUNTS_JSON and ROOTS from rclone.conf with: npm run rclone:import
 ROOTS = '[{"id":"root","type":"root","name":"My Drive","protect_file_link":false}]'
 
 USE_SERVICE_ACCOUNT = "false"
