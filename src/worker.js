@@ -278,6 +278,7 @@ function makeHomepage() {
   <title>${authConfig.siteName}</title>
   <meta name="robots" content="noindex">
   <link rel="icon" href="${uiConfig.favicon}">
+  <script>try{document.documentElement.setAttribute('data-bs-theme',localStorage.getItem('gdi-theme')||'dark')}catch(_){}</script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="${css_file}">
@@ -287,20 +288,55 @@ function makeHomepage() {
     window.player_config = JSON.parse('${htmlSafeJSON(player_config)}');
   </script>
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-  <script src="${homepage_js_file}"></script>
 </head>
 <body>
-  <div class="container mt-5">
-    <div class="row justify-content-center">
-      <div class="col-md-8 text-center">
-        <h1 class="mb-4">${authConfig.siteName}</h1>
-        <div class="list-group">
-          ${authConfig.roots.map((r, i) => `<a href="/${i}:/" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">${r.name || 'Drive ' + i} <span class="badge bg-primary rounded-pill">${r.type || 'drive'}</span></a>`).join('')}
-        </div>
+  <nav class="gdi-nav">
+    <div class="gdi-nav-inner">
+      <a class="gdi-logo" href="/">
+        ${uiConfig.logo_image ? `<img src="${uiConfig.logo_link_name.startsWith('http') ? uiConfig.logo_link_name : cdn_base + '/images/bhadoo-cloud-logo-white.svg'}" alt="${uiConfig.company_name}" height="30">` : `<i class="bi bi-cloud-fill"></i> ${uiConfig.logo_link_name}`}
+      </a>
+      <div class="gdi-nav-sep"></div>
+      <div class="gdi-nav-search">
+        <form class="gdi-search-form" method="get" action="/0:search">
+          <input class="gdi-search-input" name="q" type="search" placeholder="Search files..." required>
+          <button class="gdi-search-btn" type="submit"><i class="bi bi-search"></i></button>
+        </form>
+      </div>
+      <div class="gdi-nav-actions">
+        <button id="theme-toggle" class="gdi-nav-btn" onclick="toggleThemeHP()" title="Toggle theme">
+          <i class="bi bi-moon-stars" id="theme-icon"></i>
+        </button>
+        ${uiConfig.show_logout_button ? `<a class="gdi-nav-btn" href="/logout"><i class="bi bi-box-arrow-right"></i> Logout</a>` : ''}
       </div>
     </div>
+  </nav>
+
+  <div id="content" style="padding-top:54px;">
+    <div class="gdi-wrap">
+      <div class="gdi-drives-header">${authConfig.siteName}</div>
+      <div id="list" class="gdi-drives-grid"></div>
+      <div id="count" style="display:none;"></div>
+    </div>
   </div>
+
+  <footer class="gdi-footer"${uiConfig.hide_footer ? ' style="display:none;"' : ''}>
+    ${uiConfig.credit ? `<span>Redesigned by <a href="https://www.npmjs.com/package/@googledrive/index" target="_blank">TheFirstSpeedster</a></span> &middot; ` : ''}
+    <span>&copy; ${uiConfig.copyright_year || new Date().getFullYear()} <a href="${uiConfig.company_link}" target="_blank">${uiConfig.company_name}</a></span>
+  </footer>
+
+  <script src="${homepage_js_file}"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    function toggleThemeHP() {
+      const cur = document.documentElement.getAttribute('data-bs-theme') || 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('gdi-theme', next);
+      document.documentElement.setAttribute('data-bs-theme', next);
+      const icon = document.getElementById('theme-icon');
+      if (icon) icon.className = next === 'dark' ? 'bi bi-moon-stars' : 'bi bi-sun';
+    }
+    (function(){ const t=localStorage.getItem('gdi-theme')||'dark'; const i=document.getElementById('theme-icon'); if(i) i.className = t==='dark'?'bi bi-moon-stars':'bi bi-sun'; })();
+  </script>
 </body>
 </html>`;
 }
