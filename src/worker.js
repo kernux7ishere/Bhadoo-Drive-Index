@@ -256,6 +256,9 @@ function html(current_drive_order = 0, model = {}) {
     .gdi-sort-select { background: var(--gdi-surface); border: 1px solid var(--gdi-border); border-radius: 6px; padding: 4px 8px; font-size: 13px; color: var(--gdi-text); outline: none; }
     .gdi-sort-select:focus { border-color: var(--gdi-accent); }
     .gdi-count-bar { border-bottom: 1px solid var(--gdi-border); border-top: none; }
+    .gdi-header-select-actions { display: inline-flex; align-items: center; gap: 6px; }
+    .gdi-col-name { display: flex; align-items: center; padding-left: 12px !important; }
+    .gdi-dl-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   </style>
   <script>
   window.drive_names = JSON.parse('${htmlSafeJSON(authConfig.roots.map(it => it.name))}');
@@ -1446,7 +1449,8 @@ async function handleRequest(request, event) {
   }
   const range = request.headers.get('Range');
   const inline = 'true' === url.searchParams.get('inline');
-  return download(gd, file.id, range, inline);
+  const fmt = url.searchParams.get('fmt') || null;
+  return download(gd, file.id, range, inline, fmt);
 }
 
 export default {

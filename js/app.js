@@ -527,14 +527,6 @@ function list(path, id = '', fallback = false) {
 <div class="gdi-wrap">
   <div id="update"></div>
   <div id="head_md" class="gdi-panel gdi-markdown" style="display:none;"></div>
-  <div id="select_items" class="gdi-select-bar" style="display:none;">
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-      <input type="checkbox" id="select-all-checkboxes"> Select all
-    </label>
-    <button id="handle-multiple-items-copy" class="gdi-btn gdi-btn-ghost">
-      <i class="bi bi-clipboard"></i> Copy selected
-    </button>
-  </div>
   <div class="gdi-breadcrumb-wrap">
     <ol class="gdi-bc" id="folderne">${bcItems}</ol>
   </div>
@@ -556,7 +548,16 @@ function list(path, id = '', fallback = false) {
     </div>
     <div id="count" class="gdi-count-bar"></div>
     <div class="gdi-list-header" id="list-header">
-      <span class="gdi-col-name gdi-sort-header" data-sort="name">Name</span>
+      <span class="gdi-col-name">
+        <div id="select_items" class="gdi-header-select-actions" style="display:none;">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;text-transform:none;font-size:12px;color:var(--gdi-text);font-weight:500;">
+            <input type="checkbox" id="select-all-checkboxes"> Select all
+          </label>
+          <button id="handle-multiple-items-copy" class="gdi-btn gdi-btn-ghost" style="padding:2px 8px;font-size:11px;text-transform:none;">
+            <i class="bi bi-clipboard"></i> Copy selected
+          </button>
+        </div>
+      </span>
       <span class="gdi-col-size gdi-sort-header" data-sort="size">Size</span>
       <span class="gdi-col-date gdi-sort-header" data-sort="date">Modified</span>
       <span class="gdi-col-acts"></span>
@@ -949,14 +950,6 @@ function render_search_result_list() {
   <div class="gdi-search-header">
     Search results for <span class="gdi-search-query">"${escHtml(q)}"</span>
   </div>
-  <div id="select_items" class="gdi-select-bar" style="display:none;">
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-      <input type="checkbox" id="select-all-checkboxes"> Select all
-    </label>
-    <button id="handle-multiple-items-copy" class="gdi-btn gdi-btn-ghost">
-      <i class="bi bi-clipboard"></i> Copy selected
-    </button>
-  </div>
   <div class="gdi-panel">
     <div class="gdi-toolbar">
       <input id="folder-filter" class="gdi-filter-input" type="search" placeholder="Filter results…" autocomplete="off">
@@ -974,6 +967,21 @@ function render_search_result_list() {
       </div>
     </div>
     <div id="count" class="gdi-count-bar"></div>
+    <div class="gdi-list-header" id="list-header">
+      <span class="gdi-col-name">
+        <div id="select_items" class="gdi-header-select-actions" style="display:none;">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;text-transform:none;font-size:12px;color:var(--gdi-text);font-weight:500;">
+            <input type="checkbox" id="select-all-checkboxes"> Select all
+          </label>
+          <button id="handle-multiple-items-copy" class="gdi-btn gdi-btn-ghost" style="padding:2px 8px;font-size:11px;text-transform:none;">
+            <i class="bi bi-clipboard"></i> Copy selected
+          </button>
+        </div>
+      </span>
+      <span class="gdi-col-size gdi-sort-header" data-sort="size">Size</span>
+      <span class="gdi-col-date gdi-sort-header" data-sort="date">Modified</span>
+      <span class="gdi-col-acts"></span>
+    </div>
     <div id="list"></div>
   </div>
   <div id="readme_md" style="display:none;"></div>
@@ -1385,18 +1393,63 @@ function file_workspace(name, size, mimeType, baseLink) {
     const formats = gdoc ? gdoc.formats : [];
 
     const btns = formats.map(f =>
-        `<a class="btn btn-sm btn-outline-secondary me-2 mb-2" href="${baseLink}&fmt=${f.ext}" download="${escHtml(name)}.${f.ext}">
+        `<a class="gdi-btn gdi-btn-ghost me-2 mb-2" href="${baseLink}&fmt=${f.ext}" download="${escHtml(name)}.${f.ext}">
            <i class="bi bi-download me-1"></i>${f.label}
          </a>`
     ).join('');
 
-    const bodyHtml = `
-      <p style="color:var(--gdi-text-muted);font-size:13px;margin-bottom:12px;">
-        This is a <strong>${escHtml(typeName)}</strong>. It cannot be previewed here — choose a format to export and download.
-      </p>
-      <div>${btns}</div>`;
+    const isGoogleDoc = mimeType === 'application/vnd.google-apps.document';
+    const previewContainer = isGoogleDoc ? `
+      <div id="docx_spinner" class="gdi-spinner-wrap"><div class="gdi-spinner"></div></div>
+      <div id="docx_preview" class="gdi-markdown" style="display:none;background:var(--gdi-surface);border:1px solid var(--gdi-border);border-radius:var(--gdi-radius-sm);max-height:75vh;overflow:auto;padding:24px;margin-top:14px;"></div>
+    ` : '';
 
-    $('#content').html(_viewerCard(icon, name, size, bodyHtml, ''));
+    const bodyHtml = `
+      <div style="margin-bottom:12px;">
+        <span style="color:var(--gdi-text-muted);font-size:13px;display:block;margin-bottom:8px;">
+          ${isGoogleDoc ? 'Export or preview this document:' : `This is a <strong>${escHtml(typeName)}</strong>. Choose a format to export:`}
+        </span>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${btns}</div>
+      </div>
+      ${previewContainer}`;
+
+    $('#content').html(_viewerCard(
+        icon, name, size,
+        bodyHtml,
+        renderDownloadButtons(baseLink + '&fmt=' + (formats[0]?.ext || 'pdf'), encodeURIComponent(name))
+    ));
+
+    if (isGoogleDoc) {
+        const docxExportUrl = baseLink + '&fmt=docx';
+        function renderGDocMammoth() {
+            fetch(docxExportUrl)
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.arrayBuffer();
+                })
+                .then(buf => mammoth.convertToHtml({ arrayBuffer: buf }))
+                .then(result => {
+                    $('#docx_spinner').remove();
+                    $('#docx_preview').html(result.value).show();
+                    $('#docx_preview img').addClass('img-fluid');
+                })
+                .catch(err => {
+                    $('#docx_spinner').html(`<div class="gdi-alert gdi-alert-error">Unable to render Google Doc preview: ${escHtml(err.message)}</div>`);
+                });
+        }
+
+        if (typeof mammoth !== 'undefined') {
+            renderGDocMammoth();
+        } else {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
+            s.onload = renderGDocMammoth;
+            s.onerror = () => {
+                $('#docx_spinner').html('<div class="gdi-alert gdi-alert-error">Failed to load preview library.</div>');
+            };
+            document.head.appendChild(s);
+        }
+    }
 }
 
 // ============================================================================
