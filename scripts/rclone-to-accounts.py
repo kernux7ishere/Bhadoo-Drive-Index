@@ -311,14 +311,15 @@ def show_files(files):
         answer = input("Type 'yes' to print anyway > ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
-        return
+        return False
     if answer != "yes":
         print("Not printed.")
-        return
+        return False
     for path_, name in files:
         print(f"\n--- {name}  ({path_}) ---")
         with open(path_, encoding="utf-8") as f:
             print(f.read())
+    return True
 
 
 def final_step(chunks, files):
@@ -326,22 +327,42 @@ def final_step(chunks, files):
         print("\nPut the secret(s) above and the SCOPE variable with wrangler.")
         return
     names = ", ".join(n for _, n in files)
+    uploaded = False
+    printed = False
     while True:
-        print(f"\nWhat next?\n  1) Put secret(s) {names} with wrangler now\n"
-              "  2) Print the output file(s) to the screen (privacy risk)\n  3) Finish")
+        options = []
+        if not uploaded:
+            options.append(("1", f"Put secret(s) {names} with wrangler now"))
+        if not printed:
+            options.append(("2", "Print output file(s) to screen (privacy risk)"))
+        options.append(("3", "Finish / Exit"))
+
+        valid_choices = {opt[0] for opt in options}
+
+        print("\nWhat next?")
+        for num, desc in options:
+            print(f"  {num}) {desc}")
+
         try:
-            choice = input("Choose 1-3 > ").strip()
+            choice = input(f"Choose ({','.join(valid_choices)}) > ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return
-        if choice == "1":
+
+        if choice not in valid_choices and choice != "":
+            print(f"Invalid option. Please choose one of: {', '.join(valid_choices)}")
+            continue
+
+        if choice == "1" and not uploaded:
             print("Uploading with `wrangler secret bulk` ...")
             if push_secrets(chunks):
-                print("Secrets uploaded. Now add the SCOPE value to wrangler.toml and deploy.")
+                print("Secrets uploaded successfully! Now add the SCOPE value to wrangler.toml and deploy.")
+                uploaded = True
             else:
-                err("Upload failed. Run wrangler yourself, e.g. `npx wrangler secret put ACCOUNTS_JSON < accounts.json`.")
-        elif choice == "2":
-            show_files(files)
+                err("Upload failed. Make sure you are logged in (`npx wrangler login`) or run wrangler manually.")
+        elif choice == "2" and not printed:
+            if show_files(files):
+                printed = True
         elif choice in ("3", ""):
             print("Remember to delete the output directory when you are done.")
             return
