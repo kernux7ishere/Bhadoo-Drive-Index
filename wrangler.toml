@@ -4,35 +4,30 @@ compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # Secrets (set via `wrangler secret put <NAME>`, never put them in this file):
-#   ACCOUNTS_JSON          multi-account: JSON array of Google accounts (see MODERN-SETUP.md).
-#                          Overflow goes in ACCOUNTS_JSON_2 ... _9 (Cloudflare caps a secret at 5 KB)
-#   GOOGLE_CLIENT_ID       single-account alternative; used by every root without an "account"
-#   GOOGLE_CLIENT_SECRET
-#   GOOGLE_REFRESH_TOKEN
+#   ACCOUNTS_JSON          JSON array of Google accounts (OAuth or Service Account)
+#                          Overflow goes in ACCOUNTS_JSON_2 ... ACCOUNTS_JSON_9 (5 KB limit per secret)
 #   CRYPTO_BASE_KEY        16/24/32 chars   (openssl rand -hex 16)
 #   HMAC_BASE_KEY          >= 32 chars      (openssl rand -hex 32)
-#   SERVICE_ACCOUNT_JSON   only if USE_SERVICE_ACCOUNT = "true" (one account object or an array)
 #   USERS_JSON             only if ENABLE_LOGIN = "true" and LOGIN_DATABASE = "Local"
 #   LOGIN_GOOGLE_CLIENT_ID / LOGIN_GOOGLE_CLIENT_SECRET   only for social login
 #
 # NOTE: Workers Free allows at most 32 variables per Worker (vars + secrets).
-# Only the essentials are active below; every other option has a default in
-# src/worker.js. Uncomment just the ones you want to change.
-#
-# Optional bindings for login with LOGIN_DATABASE = "KV" or "D1": add a
-# [[kv_namespaces]] binding named ENV, or a [[d1_databases]] binding named DB.
 
 [vars]
-SITE_NAME = "Google Drive Index"
+SITE_NAME = "Cloud Index"
 ENVIRONMENT = "production"
 
-# JSON array of roots. type: "root" | "folder" | "shared_drive"
-# "account" names the ACCOUNTS_JSON entry used for that root (names are not secret);
-# omit it to use GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/GOOGLE_REFRESH_TOKEN.
-# Generate ACCOUNTS_JSON and ROOTS from rclone.conf with: npm run rclone:import
-ROOTS = '[{"id":"root","type":"root","name":"My Drive","protect_file_link":false}]'
+# JSON array of drives/buckets to index.
+# For Google Drive: type = "root" | "folder" | "shared_drive", and "account" picks the account name from ACCOUNTS_JSON.
+# For Cloudflare R2: type = "r2", and "id" or "bucket" names the [[r2_buckets]] binding.
+# Generate ACCOUNTS_JSON and SCOPE from rclone.conf with: npm run rclone:import
+SCOPE = '[{"id":"root","type":"root","name":"My Drive","account":"default","protect_file_link":false}]'
 
-USE_SERVICE_ACCOUNT = "false"
+# ── Optional R2 Bucket Binding ───────────────────────────────────────────────
+# Uncomment and bind your R2 bucket if you want to index R2 storage:
+# [[r2_buckets]]
+# binding = "MY_BUCKET"
+# bucket_name = "your-bucket-name"
 
 # ── Optional overrides (defaults shown; uncomment to change) ─────────────────
 # FILES_LIST_PAGE_SIZE = "100"
@@ -67,7 +62,7 @@ USE_SERVICE_ACCOUNT = "false"
 # UI_HEADER_PADDING = "80"
 # UI_HIDE_FOOTER = "true"
 # UI_CONTACT_LINK = "#"
-# UI_COMPANY_NAME = "Google Drive Index"
+# UI_COMPANY_NAME = "Cloud Index"
 # UI_COMPANY_LINK = "#"
 # UI_CREDIT = "true"
 # UI_DISPLAY_SIZE = "true"

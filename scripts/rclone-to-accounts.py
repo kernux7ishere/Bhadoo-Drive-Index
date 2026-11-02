@@ -1,39 +1,14 @@
 #!/usr/bin/env python3
 """
-Convert rclone.conf `drive` remotes into Bhadoo Drive Index accounts + roots.
+Convert rclone.conf `drive` remotes into Bhadoo Drive Index accounts.
 
-Run it on the machine that holds rclone.conf. The output contains OAuth refresh
-tokens: never paste it into chat, never commit it.
+Run it where rclone.conf lives. Output holds refresh tokens: never share or commit it.
 
-Outputs (in --out-dir, default ./bhadoo-secrets):
-  accounts.json  SECRET   [{"name", "client_id", "client_secret", "refresh_token"}, ...]
-                          or {"name", "service_account_json": {...}} entries.
-                          Becomes the Worker secret ACCOUNTS_JSON.
-  roots.json     public   [{"id", "type", "name", "account", "protect_file_link"}, ...]
-                          Goes in the ROOTS var of wrangler.toml.
+Writes one file, accounts.json (secret, mode 0600): a list of accounts, each with
+the drives it serves. Prints the value for the SCOPE variable.
 
-Roots point at accounts BY NAME ("account": "work"), so several remotes that
-share one login (e.g. many Shared Drives of one account) reuse one credential.
-Remotes with identical credentials are merged automatically.
-
-Selection (interactive prompt unless a flag is given):
-  a              all drives
-  e <list>       all except the listed ones
-  g <list>       only the listed ones
-  <list> is names and/or numbers separated by spaces or commas.
-
-Examples:
-  python3 scripts/rclone-to-accounts.py
-  python3 scripts/rclone-to-accounts.py --all --verify
-  python3 scripts/rclone-to-accounts.py --get work 3 --push
-  python3 scripts/rclone-to-accounts.py --exclude old-drive --dev-vars .dev.vars
-
-Skipped with a reason (tokens are never printed):
-  - no refresh_token / token field is not JSON
-  - empty client_id/client_secret: rclone's built-in client is not stored in
-    rclone.conf, so Bhadoo cannot reuse that token. Re-create the remote with
-    your own OAuth client.
-  - scope that cannot read file contents (drive.file, drive.appfolder, ...)
+Selection: a = all | e <list> = all except | g <list> = only (names or numbers)
+  python3 scripts/rclone-to-accounts.py [--all | --exclude X.. | --get X..] [--verify]
 """
 
 import argparse
@@ -71,16 +46,15 @@ def default_config_path():
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="rclone.conf -> Bhadoo accounts.json + roots.json")
+    p = argparse.ArgumentParser(description="rclone.conf -> Bhadoo accounts.json + SCOPE value")
     p.add_argument("--config", default=None, help="path to rclone.conf (default: $RCLONE_CONFIG or `rclone config file`)")
-    p.add_argument("--out-dir", default="./bhadoo-secrets", help="where to write accounts.json and roots.json")
+    p.add_argument("--out-dir", default="./bhadoo-secrets", help="where to write accounts.json")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--all", action="store_true", help="select all drives, no prompt")
     g.add_argument("--exclude", nargs="+", metavar="DRIVE", help="select all except these names/numbers")
     g.add_argument("--get", nargs="+", metavar="DRIVE", help="select only these names/numbers")
     p.add_argument("--verify", action="store_true", help="exchange each refresh token with Google and drop dead ones")
-    p.add_argument("--push", action="store_true", help="run `wrangler secret put ACCOUNTS_JSON[_N]` for you")
-    p.add_argument("--dev-vars", metavar="FILE", help="also write ACCOUNTS_JSON and ROOTS into this .dev.vars file")
+    p.add_argument("--dev-vars", metavar="FILE", help="also write ACCOUNTS_JSON and SCOPE into this .dev.vars file")
     p.add_argument("--keep-names", action="store_true", help="never merge remotes that share credentials")
     return p.parse_args()
 
@@ -248,7 +222,7 @@ def verify(cred):
 
 def build(drives, selected, merge, check):
     by_name = {d["name"]: d for d in drives}
-    accounts, roots, skipped = [], [], []
+    accounts, listing, skipped = [], [], []
     seen = {}
     for name in selected:
         d = by_name[name]
@@ -257,19 +231,20 @@ def build(drives, selected, merge, check):
             skipped.append((name, why))
             continue
         if merge and key in seen:
-            account_name = seen[key]
+            account = seen[key]
         else:
             if check:
                 bad = verify(cred)
                 if bad:
                     skipped.append((name, f"Google rejected the credential: {bad}"))
                     continue
-            account_name = name
-            seen[key] = name
-            accounts.append({"name": name, **cred})
+            account = {"name": name, **cred, "drives": []}
+            seen[key] = account
+            accounts.append(account)
         rid, rtype = root_for(d)
-        roots.append({"id": rid, "type": rtype, "name": name, "account": account_name, "protect_file_link": False})
-    return accounts, roots, skipped
+        account["drives"].append({"id": rid, "type": rtype, "name": name})
+        listing.append({"id": rid, "type": rtype, "name": name, "account": account["name"], "protect_file_link": False})
+    return accounts, listing, skipped
 
 
 def chunk_accounts(accounts):
@@ -310,18 +285,66 @@ def update_dev_vars(path, values):
     write_private(path, "\n".join(lines) + "\n")
 
 
-def push(chunks):
-    for i, chunk in enumerate(chunks):
-        name = secret_name(i)
-        payload = json.dumps(chunk, separators=(",", ":"))
-        print(f"  wrangler secret put {name} ...", end=" ", flush=True)
-        r = subprocess.run(["npx", "wrangler", "secret", "put", name], input=payload, text=True, capture_output=True)
-        if r.returncode != 0:
-            print("FAILED")
-            err(r.stderr.strip())
-            return False
-        print("ok")
-    return True
+PRIVACY_WARNING = """
+PRIVACY WARNING
+  The file(s) contain OAuth client secrets and refresh tokens. Anyone who sees
+  them can read your Google Drive. Printing puts them in your terminal scrollback
+  and in any screen share, recording or log capturing this session.
+  Never paste them into chat, issues or commits."""
+
+
+def push_secrets(chunks):
+    """Upload every chunk in one `wrangler secret bulk` call (values go over stdin)."""
+    payload = json.dumps({secret_name(i): json.dumps(c, separators=(",", ":")) for i, c in enumerate(chunks)})
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        r = subprocess.run(["npx", "wrangler", "secret", "bulk"], input=payload, text=True, cwd=root)
+    except OSError as e:
+        err(f"Could not run wrangler: {e}")
+        return False
+    return r.returncode == 0
+
+
+def show_files(files):
+    print(PRIVACY_WARNING)
+    try:
+        answer = input("Type 'yes' to print anyway > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if answer != "yes":
+        print("Not printed.")
+        return
+    for path_, name in files:
+        print(f"\n--- {name}  ({path_}) ---")
+        with open(path_, encoding="utf-8") as f:
+            print(f.read())
+
+
+def final_step(chunks, files):
+    if not sys.stdin.isatty():
+        print("\nPut the secret(s) above and the SCOPE variable with wrangler.")
+        return
+    names = ", ".join(n for _, n in files)
+    while True:
+        print(f"\nWhat next?\n  1) Put secret(s) {names} with wrangler now\n"
+              "  2) Print the output file(s) to the screen (privacy risk)\n  3) Finish")
+        try:
+            choice = input("Choose 1-3 > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if choice == "1":
+            print("Uploading with `wrangler secret bulk` ...")
+            if push_secrets(chunks):
+                print("Secrets uploaded. Now add the SCOPE value to wrangler.toml and deploy.")
+            else:
+                err("Upload failed. Run wrangler yourself, e.g. `npx wrangler secret put ACCOUNTS_JSON < accounts.json`.")
+        elif choice == "2":
+            show_files(files)
+        elif choice in ("3", ""):
+            print("Remember to delete the output directory when you are done.")
+            return
 
 
 def main():
@@ -344,7 +367,7 @@ def main():
         err("ERROR: nothing selected")
         return 1
 
-    accounts, roots, skipped = build(drives, selected, not args.keep_names, args.verify)
+    accounts, scope_list, skipped = build(drives, selected, not args.keep_names, args.verify)
     for name, why in skipped:
         err(f"skipped {name}: {why}")
     if not accounts:
@@ -355,41 +378,26 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     out = os.path.abspath(args.out_dir)
     os.chmod(out, 0o700)
-    write_private(os.path.join(out, "accounts.json"), json.dumps(accounts, indent=2) + "\n")
-    with open(os.path.join(out, "roots.json"), "w", encoding="utf-8") as f:
-        json.dump(roots, f, indent=2)
-        f.write("\n")
-    roots_line = "ROOTS = '" + json.dumps(roots, separators=(",", ":")).replace("'", "\\'") + "'"
+    files = []
+    for i, chunk in enumerate(chunks):
+        fname = "accounts.json" if i == 0 else f"accounts.{i + 1}.json"
+        write_private(os.path.join(out, fname), json.dumps(chunk, indent=2) + "\n")
+        files.append((os.path.join(out, fname), secret_name(i)))
+    scope_value = json.dumps(scope_list, separators=(",", ":"))
 
     if args.dev_vars:
         update_dev_vars(args.dev_vars, {
-            "ACCOUNTS_JSON": json.dumps(chunks[0], separators=(",", ":")),
-            **{secret_name(i): json.dumps(c, separators=(",", ":")) for i, c in enumerate(chunks) if i},
-            "ROOTS": json.dumps(roots, separators=(",", ":")),
+            **{secret_name(i): json.dumps(c, separators=(",", ":")) for i, c in enumerate(chunks)},
+            "SCOPE": scope_value,
         })
 
-    print(f"\nConverted {len(roots)} drive(s) using {len(accounts)} account(s)")
-    for r in roots:
-        print(f"  {r['name']:<20} {r['type']:<12} id={r['id']:<20} account={r['account']}")
-    print(f"\naccounts.json (0600): {os.path.join(out, 'accounts.json')}")
-    print(f"roots.json:           {os.path.join(out, 'roots.json')}")
+    print(f"\nConverted {len(scope_list)} drive(s) with {len(accounts)} account(s)")
+    for path_, name in files:
+        print(f"{name} (secret) <- {path_}")
     if args.dev_vars:
-        print(f"updated:              {args.dev_vars}")
-
-    print("\nNext:")
-    if args.push:
-        print("  Uploading secrets to Cloudflare:")
-        if not push(chunks):
-            err("Push failed; run `npx wrangler secret put ACCOUNTS_JSON` manually.")
-            return 1
-    else:
-        names = ", ".join(secret_name(i) for i in range(len(chunks)))
-        print(f"  1. npx wrangler secret put {names.split(', ')[0]}   (paste the one-line JSON; --push does this for you)")
-        if len(chunks) > 1:
-            print(f"     {len(chunks)} secrets are needed: {names}. Re-run with --push to split them automatically.")
-    print("  2. Put this in wrangler.toml [vars]:")
-    print(f"     {roots_line}")
-    print("  3. npx wrangler deploy, then delete the output directory.")
+        print(f"Also written to {args.dev_vars}")
+    print(f"\nSCOPE value (put in wrangler.toml [vars]):\n{scope_value}")
+    final_step(chunks, files)
     return 0
 
 

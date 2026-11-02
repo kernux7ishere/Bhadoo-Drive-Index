@@ -107,3 +107,9 @@ worker/wrangler.toml
 # Wrangler
 .wrangler/
 .dev.vars
+
+# Python
+__pycache__/
+
+# rclone import output (contains refresh tokens)
+bhadoo-secrets/
