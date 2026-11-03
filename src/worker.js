@@ -259,6 +259,12 @@ function html(current_drive_order = 0, model = {}) {
     .gdi-header-select-actions { display: inline-flex; align-items: center; gap: 6px; }
     .gdi-col-name { display: flex; align-items: center; padding-left: 12px !important; }
     .gdi-dl-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .gdi-hash-box { background: var(--gdi-surface-2); border: 1px solid var(--gdi-border); border-radius: var(--gdi-radius-sm); padding: 12px 14px; margin-bottom: 10px; }
+    .gdi-hash-item { margin-bottom: 8px; }
+    .gdi-hash-item:last-child { margin-bottom: 0; }
+    .gdi-hash-label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--gdi-text-muted); margin-bottom: 3px; }
+    .gdi-hash-row { display: flex; align-items: center; gap: 6px; }
+    .gdi-hash-val { flex: 1; min-width: 0; font-size: 12px; font-family: var(--gdi-mono); background: var(--gdi-bg); color: var(--gdi-text); padding: 5px 8px; border: 1px solid var(--gdi-border); border-radius: var(--gdi-radius-sm); outline: none; }
   </style>
   <script>
   window.drive_names = JSON.parse('${htmlSafeJSON(authConfig.roots.map(it => it.name))}');

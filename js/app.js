@@ -1273,38 +1273,18 @@ function renderErrorCard(error) {
  * Render the download URL bar + download/open-in-app buttons.
  */
 function renderDownloadButtons(url, encoded_name, opts = {}) {
-    const url_base64 = btoa(url);
-    const mediaItems = opts.showMedia ? `
-      <li><a class="dropdown-item" href="iina://weblink?url=${url}"><i class="bi bi-play-circle me-2"></i>IINA</a></li>
-      <li><a class="dropdown-item" href="potplayer://${url}"><i class="bi bi-play-circle me-2"></i>PotPlayer</a></li>
-      <li><a class="dropdown-item" href="vlc://${url}"><i class="bi bi-play-circle me-2"></i>VLC Mobile</a></li>
-      <li><a class="dropdown-item" href="${url}"><i class="bi bi-play-circle me-2"></i>VLC Desktop</a></li>
-      <li><a class="dropdown-item" href="nplayer-${url}"><i class="bi bi-play-circle me-2"></i>nPlayer</a></li>
-      <li><a class="dropdown-item" href="intent://${url}#Intent;type=video/any;package=is.xyz.mpv;scheme=https;end;"><i class="bi bi-play-circle me-2"></i>mpv Android</a></li>
-      <li><a class="dropdown-item" href="mpv://${url_base64}"><i class="bi bi-play-circle me-2"></i>mpv x64</a></li>
-      <li><a class="dropdown-item" href="intent:${url}#Intent;package=com.mxtech.videoplayer.ad;S.title=${encoded_name};end"><i class="bi bi-play-circle me-2"></i>MX Player (Free)</a></li>
-      <li><a class="dropdown-item" href="intent:${url}#Intent;package=com.mxtech.videoplayer.pro;S.title=${encoded_name};end"><i class="bi bi-play-circle me-2"></i>MX Player (Pro)</a></li>
-      <li><hr class="dropdown-divider"></li>` : '';
-
     return `<div class="gdi-dl-wrap">
-  <div class="gdi-dl-url-row">
-    <span class="gdi-dl-url-text" id="dlurl" title="${escHtml(url)}">${escHtml(url)}</span>
-    <button class="gdi-btn gdi-btn-ghost gdi-btn-icon" type="button" onclick="copyShareUrl(${escHtml(JSON.stringify(url))})" title="Copy URL"><i class="bi bi-clipboard"></i></button>
-  </div>
-  <div class="gdi-dl-actions">
-    <a href="${url}" class="gdi-btn gdi-btn-primary"><i class="bi bi-download"></i> Download</a>
-    <button type="button" class="gdi-btn gdi-btn-ghost" onclick="checkFileHash(${escHtml(JSON.stringify(url))})" title="Compute SHA-256 and MD5 checksum">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <button class="gdi-btn gdi-btn-ghost gdi-btn-icon" type="button" onclick="copyShareUrl(${escHtml(JSON.stringify(url))})" title="Copy link (${escHtml(url)})">
+      <i class="bi bi-link-45deg" style="font-size:16px;"></i>
+    </button>
+    <button id="btn-check-hash" type="button" class="gdi-btn gdi-btn-ghost" onclick="checkFileHash(${escHtml(JSON.stringify(url))})" title="Compute SHA-256 and MD5 checksum">
       <i class="bi bi-shield-check"></i> Check Hash
     </button>
-    <div class="dropdown">
-      <button type="button" class="gdi-btn gdi-btn-ghost gdi-btn-icon dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More options"><i class="bi bi-three-dots-vertical"></i></button>
-      <ul class="dropdown-menu">
-        ${mediaItems}
-        <li><a class="dropdown-item" href="intent:${url}#Intent;component=idm.internet.download.manager/idm.internet.download.manager.Downloader;S.title=${encoded_name};end"><i class="bi bi-cloud-download me-2"></i>1DM Free</a></li>
-        <li><a class="dropdown-item" href="intent:${url}#Intent;component=idm.internet.download.manager.adm.lite/idm.internet.download.manager.Downloader;S.title=${encoded_name};end"><i class="bi bi-cloud-download me-2"></i>1DM Lite</a></li>
-        <li><a class="dropdown-item" href="intent:${url}#Intent;component=idm.internet.download.manager.plus/idm.internet.download.manager.Downloader;S.title=${encoded_name};end"><i class="bi bi-cloud-download me-2"></i>1DM+ Plus</a></li>
-      </ul>
-    </div>
+  </div>
+  <div id="gdi-hash-inline-container" style="display:none;"></div>
+  <div class="gdi-dl-actions">
+    <a href="${url}" class="gdi-btn gdi-btn-primary"><i class="bi bi-download"></i> Download</a>
   </div>
 </div>`;
 }
@@ -1892,36 +1872,22 @@ $(function() {
 // HASH CHECKER & DOCUMENT / MARKDOWN / DOCX PREVIEWS
 // ============================================================================
 async function checkFileHash(fileUrl) {
-    let modal = document.getElementById('gdi-hash-modal');
-    if (!modal) {
-        const modalHtml = `
-<div class="modal fade" id="gdi-hash-modal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-shield-check me-2"></i>File Checksum (Hash)</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="gdi-hash-body">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="gdi-btn gdi-btn-ghost" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>`;
-        $('body').append(modalHtml);
-        modal = document.getElementById('gdi-hash-modal');
-    }
+    const $container = $('#gdi-hash-inline-container');
+    const $btn = $('#btn-check-hash');
 
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
+    // If button is already disabled / computed, ignore
+    if ($btn.prop('disabled')) return;
 
-    const $body = $('#gdi-hash-body');
-    $body.html(`
-      <div class="text-center py-3">
-        <div class="gdi-spinner mb-3" style="margin:0 auto;"></div>
-        <div id="gdi-hash-progress" style="font-size:13px;color:var(--gdi-text-muted);">Fetching file data and computing hashes...</div>
+    // Gray out and disable the button immediately
+    $btn.prop('disabled', true).addClass('disabled').css({ opacity: 0.6, cursor: 'not-allowed' });
+    $btn.html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Checking...');
+
+    $container.show().html(`
+      <div class="gdi-hash-box">
+        <div class="d-flex align-items-center gap-2" style="font-size:12px;color:var(--gdi-text-muted);">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <span id="gdi-hash-progress">Fetching file data and computing hashes...</span>
+        </div>
       </div>
     `);
 
@@ -1974,25 +1940,34 @@ async function checkFileHash(fileUrl) {
         const sha256Hex = Array.from(new Uint8Array(shaBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
         const md5Hex = spark ? spark.end() : 'N/A';
 
-        $body.html(`
-          <div class="mb-3">
-            <label class="form-label text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;">SHA-256</label>
-            <div class="input-group">
-              <input type="text" class="form-control form-control-sm font-monospace" style="font-size:12px;background:var(--gdi-surface-2);color:var(--gdi-text);" readonly value="${sha256Hex}" id="sha256-val">
-              <button class="gdi-btn gdi-btn-ghost gdi-btn-icon" type="button" onclick="copyShareUrl('${sha256Hex}')" title="Copy SHA-256"><i class="bi bi-clipboard"></i></button>
+        $container.html(`
+          <div class="gdi-hash-box">
+            <div class="gdi-hash-item">
+              <div class="gdi-hash-label">SHA-256</div>
+              <div class="gdi-hash-row">
+                <input type="text" class="gdi-hash-val" readonly value="${sha256Hex}" id="sha256-val">
+                <button class="gdi-btn gdi-btn-ghost gdi-btn-icon" type="button" onclick="copyShareUrl('${sha256Hex}')" title="Copy SHA-256"><i class="bi bi-clipboard"></i></button>
+              </div>
             </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;">MD5</label>
-            <div class="input-group">
-              <input type="text" class="form-control form-control-sm font-monospace" style="font-size:12px;background:var(--gdi-surface-2);color:var(--gdi-text);" readonly value="${md5Hex}" id="md5-val">
-              <button class="gdi-btn gdi-btn-ghost gdi-btn-icon" type="button" onclick="copyShareUrl('${md5Hex}')" title="Copy MD5"><i class="bi bi-clipboard"></i></button>
+            <div class="gdi-hash-item">
+              <div class="gdi-hash-label">MD5</div>
+              <div class="gdi-hash-row">
+                <input type="text" class="gdi-hash-val" readonly value="${md5Hex}" id="md5-val">
+                <button class="gdi-btn gdi-btn-ghost gdi-btn-icon" type="button" onclick="copyShareUrl('${md5Hex}')" title="Copy MD5"><i class="bi bi-clipboard"></i></button>
+              </div>
             </div>
+            <div class="text-end text-muted mt-2" style="font-size:11px;">Verified ${formatFileSize(receivedBytes)}</div>
           </div>
-          <div class="small text-muted text-end">Verified ${formatFileSize(receivedBytes)}</div>
         `);
+        $btn.html('<i class="bi bi-shield-check"></i> Hash Checked');
     } catch (err) {
-        $body.html(`<div class="gdi-alert gdi-alert-error"><i class="bi bi-exclamation-octagon me-2"></i>Failed to calculate hash: ${escHtml(err.message)}</div>`);
+        $container.html(`
+          <div class="gdi-alert gdi-alert-error" style="margin-bottom:10px;">
+            <i class="bi bi-exclamation-octagon me-2"></i>Failed to calculate hash: ${escHtml(err.message)}
+          </div>
+        `);
+        $btn.prop('disabled', false).removeClass('disabled').css({ opacity: 1, cursor: 'pointer' });
+        $btn.html('<i class="bi bi-shield-check"></i> Check Hash');
     }
 }
 
