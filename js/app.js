@@ -47,13 +47,20 @@ function getFileIcon(ext) {
  * Returns an array of <li> elements as a string for .gdi-bc lists.
  */
 function generateBreadcrumb(path) {
-    const parts = path.split('/');
-    let html = '';
+    const rawParts = trimChar(path, '/').split('/').filter(Boolean);
+    const curDrive = window.current_drive_order || 0;
+    if (rawParts.length === 0) {
+        rawParts.push(curDrive + ':');
+    } else if (!rawParts[0].endsWith(':')) {
+        rawParts.unshift(curDrive + ':');
+    }
+
+    let html = '<li><a href="/">Home</a></li><li class="gdi-bc-sep">/</li>';
     let built = '';
-    for (let i = 0; i < parts.length; i++) {
-        let part = parts[i];
-        built += (i === 0 ? '' : '/') + part;
-        const isLast = (i === parts.length - 1);
+    for (let i = 0; i < rawParts.length; i++) {
+        const part = rawParts[i];
+        built += '/' + part;
+        const isLast = (i === rawParts.length - 1);
         let decoded;
         try { decoded = decodeURIComponent(part); } catch (_) { decoded = part; }
         const rootMatch = decoded.match(/^(\d+):$/);
@@ -62,7 +69,7 @@ function generateBreadcrumb(path) {
         if (isLast) {
             html += `<li class="gdi-bc-cur" title="${escHtml(display)}">${escHtml(label)}</li>`;
         } else {
-            html += `<li><a href="${built ? built + '/' : '/'}" title="${escHtml(display)}">${escHtml(label)}</a></li><li class="gdi-bc-sep">/</li>`;
+            html += `<li><a href="${built + '/'}" title="${escHtml(display)}">${escHtml(label)}</a></li><li class="gdi-bc-sep">/</li>`;
         }
     }
     return html;
@@ -498,28 +505,32 @@ function requestSearch(params, resultCallback, retries = 3) {
 // ============================================================================
 function list(path, id = '', fallback = false) {
     const navfulllink = window.location.pathname;
-    const navarray = trimChar(navfulllink, '/').split('/');
-    let currentPath = '/';
+    const navarray = trimChar(navfulllink, '/').split('/').filter(Boolean);
+    const curDrive = window.current_drive_order || 0;
+    if (navarray.length === 0) {
+        navarray.push(curDrive + ':');
+    } else if (!navarray[0].endsWith(':')) {
+        navarray.unshift(curDrive + ':');
+    }
+    let currentPath = '';
 
     // Build breadcrumb
     let bcItems = `<li><a href="/">Home</a></li><li class="gdi-bc-sep">/</li>`;
-    if (navarray.length > 1) {
-        for (const i in navarray) {
-            const pathPart = navarray[i];
-            let decodedPart;
-            try { decodedPart = decodeURIComponent(pathPart); } catch (_) { decodedPart = pathPart; }
-            decodedPart = decodedPart.replace(/\//g, '%2F');
-            const rootMatchL = decodedPart.match(/^(\d+):$/);
-            const displayPart = rootMatchL ? (window.drive_names && window.drive_names[+rootMatchL[1]] || decodedPart) : decodedPart;
-            const label = displayPart.length > 18 ? displayPart.slice(0, 14) + '…' : displayPart;
-            currentPath += pathPart + '/';
-            if (!label) break;
-            const isLast = (Number(i) === navarray.length - 1);
-            if (isLast) {
-                bcItems += `<li class="gdi-bc-cur" title="${escHtml(displayPart)}">${escHtml(label)}</li>`;
-            } else {
-                bcItems += `<li><a href="${currentPath}" title="${escHtml(displayPart)}">${escHtml(label)}</a></li><li class="gdi-bc-sep">/</li>`;
-            }
+    for (const i in navarray) {
+        const pathPart = navarray[i];
+        let decodedPart;
+        try { decodedPart = decodeURIComponent(pathPart); } catch (_) { decodedPart = pathPart; }
+        decodedPart = decodedPart.replace(/\//g, '%2F');
+        const rootMatchL = decodedPart.match(/^(\d+):$/);
+        const displayPart = rootMatchL ? (window.drive_names && window.drive_names[+rootMatchL[1]] || decodedPart) : decodedPart;
+        const label = displayPart.length > 18 ? displayPart.slice(0, 14) + '…' : displayPart;
+        currentPath += '/' + pathPart;
+        if (!label) break;
+        const isLast = (Number(i) === navarray.length - 1);
+        if (isLast) {
+            bcItems += `<li class="gdi-bc-cur" title="${escHtml(displayPart)}">${escHtml(label)}</li>`;
+        } else {
+            bcItems += `<li><a href="${currentPath + '/'}" title="${escHtml(displayPart)}">${escHtml(label)}</a></li><li class="gdi-bc-sep">/</li>`;
         }
     }
 
@@ -546,9 +557,9 @@ function list(path, id = '', fallback = false) {
         </button>
       </div>
     </div>
-    <div id="count" class="gdi-count-bar"></div>
+    <div id="count" class="gdi-count-bar" style="display:none !important;"></div>
     <div class="gdi-list-header" id="list-header">
-      <span class="gdi-col-name">
+      <span class="gdi-col-name" style="width:100%;">
         <div id="select_items" class="gdi-header-select-actions" style="display:none;">
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;text-transform:none;font-size:12px;color:var(--gdi-text);font-weight:500;">
             <input type="checkbox" id="select-all-checkboxes"> Select all
@@ -556,10 +567,9 @@ function list(path, id = '', fallback = false) {
           <button id="handle-multiple-items-copy" class="gdi-btn gdi-btn-ghost" style="padding:2px 8px;font-size:11px;text-transform:none;">
             <i class="bi bi-clipboard"></i> Copy selected
           </button>
+          <span id="gdi-header-count" class="gdi-header-info"></span>
         </div>
       </span>
-      <span class="gdi-col-size gdi-sort-header" data-sort="size">Size</span>
-      <span class="gdi-col-date gdi-sort-header" data-sort="date">Modified</span>
       <span class="gdi-col-acts"></span>
     </div>
     <div id="list"></div>
@@ -857,7 +867,9 @@ function append_files_to_list(path, files) {
         const total_files = $list.find('.size_items').length;
         const itemText = total_items === 0 ? 'Empty folder' : `${total_items} item${total_items === 1 ? '' : 's'}`;
         const sizeText = total_files > 0 ? ` &middot; ${total_files} file${total_files === 1 ? '' : 's'}, ${total_size}` : '';
-        $('#count').addClass('show').html(itemText + sizeText);
+        const countHtml = itemText + sizeText;
+        $('#count').addClass('show').html(countHtml);
+        $('#gdi-header-count').html(countHtml);
     }
 }
 
@@ -934,7 +946,9 @@ function append_files_to_fallback_list(path, files) {
             const total_files = $list.find('.size_items').length;
             const itemText = total_items === 0 ? 'Empty folder' : `${total_items} item${total_items === 1 ? '' : 's'}`;
             const sizeText = total_files > 0 ? ` &middot; ${total_files} file${total_files === 1 ? '' : 's'}, ${total_size}` : '';
-            $('#count').addClass('show').html(itemText + sizeText);
+            const countHtml = itemText + sizeText;
+            $('#count').addClass('show').html(countHtml);
+            $('#gdi-header-count').html(countHtml);
         }
     } catch (e) { console.error(e); }
 }
@@ -966,9 +980,9 @@ function render_search_result_list() {
         </button>
       </div>
     </div>
-    <div id="count" class="gdi-count-bar"></div>
+    <div id="count" class="gdi-count-bar" style="display:none !important;"></div>
     <div class="gdi-list-header" id="list-header">
-      <span class="gdi-col-name">
+      <span class="gdi-col-name" style="width:100%;">
         <div id="select_items" class="gdi-header-select-actions" style="display:none;">
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;text-transform:none;font-size:12px;color:var(--gdi-text);font-weight:500;">
             <input type="checkbox" id="select-all-checkboxes"> Select all
@@ -976,10 +990,9 @@ function render_search_result_list() {
           <button id="handle-multiple-items-copy" class="gdi-btn gdi-btn-ghost" style="padding:2px 8px;font-size:11px;text-transform:none;">
             <i class="bi bi-clipboard"></i> Copy selected
           </button>
+          <span id="gdi-header-count" class="gdi-header-info"></span>
         </div>
       </span>
-      <span class="gdi-col-size gdi-sort-header" data-sort="size">Size</span>
-      <span class="gdi-col-date gdi-sort-header" data-sort="date">Modified</span>
       <span class="gdi-col-acts"></span>
     </div>
     <div id="list"></div>
@@ -1096,13 +1109,11 @@ function append_search_result_to_list(files) {
             const total_size  = formatFileSize(totalsize) || '0 Bytes';
             const total_items = $list.find('.countitems').length;
             const total_files = $list.find('.size_items').length;
-            if (total_items === 0) {
-                $('#count').addClass('show').html('No results found');
-            } else {
-                const itemText = `${total_items} result${total_items === 1 ? '' : 's'}`;
-                const sizeText = total_files > 0 ? ` &middot; ${total_size}` : '';
-                $('#count').addClass('show').html(itemText + sizeText);
-            }
+            const countHtml = (total_items === 0)
+                ? 'No results found'
+                : `${total_items} result${total_items === 1 ? '' : 's'}${total_files > 0 ? ` &middot; ${total_size}` : ''}`;
+            $('#count').addClass('show').html(countHtml);
+            $('#gdi-header-count').html(countHtml);
         }
     } catch (e) { console.error(e); }
 }
